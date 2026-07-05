@@ -15,6 +15,7 @@ The platform follows the operating philosophy:
 - PostgreSQL/Supabase schema contract
 - REST API contract documentation in code
 - Permission checks, validation, audit logging, domain events, trust score recalculation, operational metrics, and tests
+- Versioned student and company profile management with AI context invalidation events
 - Lazy-loaded admin workspaces for better production bundles
 
 ## Run Locally
@@ -76,5 +77,7 @@ See `docs/production-readiness.md` for domain rules, schema contracts, monitorin
 - `POST /api/projects/:projectId/final-evaluations`
 - `GET /api/audit-logs`
 - `GET /api/trust-scores/:entityType/:entityId`
+- `PATCH /api/students/:studentId/profile`
+- `PATCH /api/companies/:companyId/profile`
 
 Write endpoints require `x-konexa-user-id` so every decision is tied to a verified platform actor.

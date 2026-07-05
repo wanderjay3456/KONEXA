@@ -5,7 +5,9 @@ import {
   DomainRuleError,
   submitApplication,
   submitFinalEvaluation,
-  submitWeeklyEvaluation
+  submitWeeklyEvaluation,
+  updateCompanyProfile,
+  updateStudentProfile
 } from '../domain/enterpriseCore';
 import { initialCompanyProfiles, initialProjects, initialStudentProfiles, initialUsers, initialApplications, initialSubmissions, initialEvaluations, initialCompanyEvaluations, initialStudentWarnings } from '../../mockData';
 import { ApplicationStatus, HiringDecision, ProjectStatus, UserRole } from '../../types';
@@ -118,4 +120,33 @@ test('students cannot create company projects', () => {
     }),
     DomainRuleError
   );
+});
+
+test('student profile updates are versioned and invalidate AI context', () => {
+  const actor = initialUsers.find((user) => user.id === 'user_student_1')!;
+  const profile = initialStudentProfiles.find((item) => item.userId === actor.id)!;
+  const result = updateStudentProfile(actor, profile, {
+    skills: [...profile.skills, 'Supabase'],
+    biography: 'Evidence-driven software engineer focused on trustworthy healthcare AI projects.',
+    contactEmail: 'minh.anh@rmit.edu.vn'
+  });
+
+  assert.equal(result.entity.profileVersion, 2);
+  assert.ok(result.profileVersion?.changedFields.includes('skills'));
+  assert.ok(result.events.some((item) => item.type === 'ai.context_invalidated'));
+  assert.equal(result.auditLogs[0].decision, 'ALLOW');
+});
+
+test('company profile updates are versioned and synchronized through events', () => {
+  const actor = initialUsers.find((user) => user.id === 'user_company_1')!;
+  const profile = initialCompanyProfiles.find((item) => item.userId === actor.id)!;
+  const result = updateCompanyProfile(actor, profile, {
+    description: 'Healthcare AI company building explainable project pathways for global talent.',
+    preferredSkills: ['React', 'TypeScript', 'Clinical AI'],
+    recruitmentStatus: 'OPEN'
+  });
+
+  assert.equal(result.entity.profileVersion, 2);
+  assert.ok(result.profileVersion?.changedFields.includes('description'));
+  assert.ok(result.events.some((item) => item.type === 'company.updated'));
 });

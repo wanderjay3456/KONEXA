@@ -4,6 +4,7 @@ import {
   CompanyProfile,
   FinalProjectEvaluation,
   Notification,
+  ProfileVersion,
   Project,
   StudentProfile,
   StudentWarning,
@@ -24,6 +25,7 @@ export interface RemotePlatformState {
   notifications: Notification[];
   companyEvaluations: CompanyEvaluation[];
   warnings: StudentWarning[];
+  profileVersions?: ProfileVersion[];
 }
 
 interface ApiErrorBody {
@@ -133,5 +135,21 @@ export function submitRemoteFinalEvaluation(
     method: 'POST',
     headers: actorHeaders(actorId),
     body: JSON.stringify(input)
+  });
+}
+
+export function updateRemoteStudentProfile(actorId: string, studentId: string, patch: Partial<StudentProfile>) {
+  return request<StudentProfile>(`/api/students/${studentId}/profile`, {
+    method: 'PATCH',
+    headers: actorHeaders(actorId),
+    body: JSON.stringify(patch)
+  });
+}
+
+export function updateRemoteCompanyProfile(actorId: string, companyId: string, patch: Partial<CompanyProfile>) {
+  return request<CompanyProfile>(`/api/companies/${companyId}/profile`, {
+    method: 'PATCH',
+    headers: actorHeaders(actorId),
+    body: JSON.stringify(patch)
   });
 }

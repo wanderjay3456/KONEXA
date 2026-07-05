@@ -7,9 +7,11 @@ import {
   submitApplication,
   submitFinalEvaluation,
   submitWeeklyEvaluation,
+  updateCompanyProfile,
+  updateStudentProfile,
   updateApplicationStatus
 } from '../platform/domain/enterpriseCore';
-import { ApplicationStatus, Notification, ProjectStatus, User } from '../types';
+import { ApplicationStatus, CompanyProfile, Notification, ProjectStatus, StudentProfile, User } from '../types';
 import { ServerConfig } from './config';
 import { appendOperationalState, PlatformRepository } from './repository';
 import {
@@ -83,7 +85,74 @@ function sendState(res: Response, repository: PlatformRepository) {
     finalEvaluations: state.finalEvaluations,
     notifications: state.notifications,
     companyEvaluations: state.companyEvaluations,
-    warnings: state.warnings
+    warnings: state.warnings,
+    profileVersions: state.profileVersions
+  });
+}
+
+function optionalStringArray(body: Record<string, unknown>, field: string) {
+  if (body[field] === undefined) return undefined;
+  return readStringArray(body, field);
+}
+
+function optionalString(body: Record<string, unknown>, field: string) {
+  if (body[field] === undefined) return undefined;
+  return readOptionalString(body, field);
+}
+
+function optionalNotificationPreferences(body: Record<string, unknown>) {
+  const value = body.notificationPreferences;
+  if (value === undefined) return undefined;
+  const pref = asObject(value);
+  const readPreference = (key: string) => {
+    if (typeof pref[key] !== 'boolean') {
+      throw new RequestValidationError('Invalid notification preferences.', { [key]: 'Must be a boolean.' });
+    }
+    return pref[key] as boolean;
+  };
+  return {
+    inApp: readPreference('inApp'),
+    email: readPreference('email'),
+    projectUpdates: readPreference('projectUpdates'),
+    applicationUpdates: readPreference('applicationUpdates'),
+    aiRecommendations: readPreference('aiRecommendations'),
+    trustUpdates: readPreference('trustUpdates'),
+    weeklyReminders: readPreference('weeklyReminders')
+  };
+}
+
+function optionalPrivacySettings(body: Record<string, unknown>) {
+  const value = body.privacySettings;
+  if (value === undefined) return undefined;
+  const settings = asObject(value);
+  const readSetting = (key: string) => {
+    if (typeof settings[key] !== 'boolean') {
+      throw new RequestValidationError('Invalid privacy settings.', { [key]: 'Must be a boolean.' });
+    }
+    return settings[key] as boolean;
+  };
+  return {
+    showPortfolio: readSetting('showPortfolio'),
+    showGithub: readSetting('showGithub'),
+    showLinkedIn: readSetting('showLinkedIn'),
+    allowCompanyDiscovery: readSetting('allowCompanyDiscovery')
+  };
+}
+
+function optionalTeamMembers(body: Record<string, unknown>) {
+  const value = body.teamMembers;
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw new RequestValidationError('Invalid team members.', { teamMembers: 'Must be an array.' });
+  }
+  return value.map((item, index) => {
+    const member = asObject(item);
+    return {
+      id: optionalString(member, 'id') || `team_${index}_${Date.now()}`,
+      name: readString(member, 'name', 2),
+      role: readString(member, 'role', 2),
+      email: readString(member, 'email', 5)
+    };
   });
 }
 
@@ -147,6 +216,115 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
     const score = repository.read().trustScores.find((item) => item.entityType === req.params.entityType && item.entityId === req.params.entityId);
     if (!score) return res.status(404).json({ error: { code: 'TRUST_SCORE_NOT_FOUND', message: 'Trust score has not been calculated yet.' } });
     res.json(score);
+  });
+
+  app.patch('/api/students/:studentId/profile', (req: RequestWithActor, res, next) => {
+    try {
+      const actor = requireActor(req, repository);
+      const body = asObject(req.body);
+      const current = repository.read().studentProfiles.find((item) => item.userId === req.params.studentId);
+      if (!current) return res.status(404).json({ error: { code: 'STUDENT_PROFILE_NOT_FOUND', message: 'Student profile does not exist.' } });
+
+      const patch: Partial<StudentProfile> = {
+        avatarUrl: optionalString(body, 'avatarUrl'),
+        fullName: optionalString(body, 'fullName'),
+        university: optionalString(body, 'university'),
+        major: optionalString(body, 'major'),
+        graduationDate: optionalString(body, 'graduationDate'),
+        englishProficiency: optionalString(body, 'englishProficiency'),
+        languages: optionalStringArray(body, 'languages'),
+        skills: optionalStringArray(body, 'skills'),
+        certificates: optionalStringArray(body, 'certificates'),
+        resumeFileName: optionalString(body, 'resumeFileName'),
+        portfolioUrl: optionalString(body, 'portfolioUrl'),
+        githubUrl: optionalString(body, 'githubUrl'),
+        linkedinUrl: optionalString(body, 'linkedinUrl'),
+        preferredCountry: optionalString(body, 'preferredCountry'),
+        preferredIndustry: optionalString(body, 'preferredIndustry'),
+        preferredRole: optionalString(body, 'preferredRole'),
+        availability: optionalString(body, 'availability'),
+        biography: optionalString(body, 'biography'),
+        careerGoals: optionalString(body, 'careerGoals'),
+        contactEmail: optionalString(body, 'contactEmail'),
+        contactPhone: optionalString(body, 'contactPhone'),
+        notificationPreferences: optionalNotificationPreferences(body),
+        privacySettings: optionalPrivacySettings(body)
+      };
+
+      const result = updateStudentProfile(actor, current, Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)));
+      repository.update((state) => appendOperationalState({
+        ...state,
+        studentProfiles: state.studentProfiles.map((item) => item.userId === result.entity.userId ? result.entity : item),
+        applications: state.applications.map((item) => item.studentId === result.entity.userId ? { ...item, studentName: result.entity.fullName, studentAvatar: result.entity.avatarUrl } : item),
+        notifications: [
+          notification(result.entity.userId, 'Profile Updated', 'Your verified profile was synchronized across KONEXA AI and matching systems.', 'success'),
+          ...state.notifications
+        ]
+      }, {
+        auditLogs: result.auditLogs,
+        domainEvents: result.events,
+        trustScores: result.trustScores,
+        profileVersions: result.profileVersion ? [result.profileVersion] : []
+      }));
+      metrics.writeCount += 1;
+      res.json(result.entity);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch('/api/companies/:companyId/profile', (req: RequestWithActor, res, next) => {
+    try {
+      const actor = requireActor(req, repository);
+      const body = asObject(req.body);
+      const current = repository.read().companyProfiles.find((item) => item.userId === req.params.companyId);
+      if (!current) return res.status(404).json({ error: { code: 'COMPANY_PROFILE_NOT_FOUND', message: 'Company profile does not exist.' } });
+
+      const patch: Partial<CompanyProfile> = {
+        logoUrl: optionalString(body, 'logoUrl'),
+        companyName: optionalString(body, 'companyName'),
+        industry: optionalString(body, 'industry'),
+        description: optionalString(body, 'description'),
+        website: optionalString(body, 'website'),
+        companySize: optionalString(body, 'companySize'),
+        location: optionalString(body, 'location'),
+        englishAvailability: optionalString(body, 'englishAvailability'),
+        hiringPreferences: optionalStringArray(body, 'hiringPreferences'),
+        preferredMajors: optionalStringArray(body, 'preferredMajors'),
+        preferredSkills: optionalStringArray(body, 'preferredSkills'),
+        languages: optionalStringArray(body, 'languages'),
+        recruitmentStatus: optionalString(body, 'recruitmentStatus') as CompanyProfile['recruitmentStatus'],
+        contactEmail: optionalString(body, 'contactEmail'),
+        contactPhone: optionalString(body, 'contactPhone'),
+        notificationPreferences: optionalNotificationPreferences(body),
+        teamMembers: optionalTeamMembers(body),
+        employerBranding: optionalString(body, 'employerBranding')
+      };
+
+      const result = updateCompanyProfile(actor, current, Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)));
+      repository.update((state) => appendOperationalState({
+        ...state,
+        companyProfiles: state.companyProfiles.map((item) => item.userId === result.entity.userId ? result.entity : item),
+        projects: state.projects.map((item) => item.companyId === result.entity.userId ? { ...item, companyName: result.entity.companyName, companyLogo: result.entity.logoUrl } : item),
+        applications: state.applications.map((item) => {
+          const project = state.projects.find((projectItem) => projectItem.id === item.projectId);
+          return project?.companyId === result.entity.userId ? { ...item, companyName: result.entity.companyName } : item;
+        }),
+        notifications: [
+          notification(result.entity.userId, 'Company Profile Updated', 'Your employer profile was synchronized across KONEXA AI and matching systems.', 'success'),
+          ...state.notifications
+        ]
+      }, {
+        auditLogs: result.auditLogs,
+        domainEvents: result.events,
+        trustScores: result.trustScores,
+        profileVersions: result.profileVersion ? [result.profileVersion] : []
+      }));
+      metrics.writeCount += 1;
+      res.json(result.entity);
+    } catch (error) {
+      next(error);
+    }
   });
 
   if (config.serveStatic) {

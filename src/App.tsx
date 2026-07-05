@@ -38,6 +38,8 @@ import {
   submitRemoteFinalEvaluation,
   submitRemoteWeeklyDeliverable,
   submitRemoteWeeklyEvaluation,
+  updateRemoteCompanyProfile,
+  updateRemoteStudentProfile,
   updateRemoteApplicationStatus,
   type RemotePlatformState
 } from './platform/services/apiClient';
@@ -299,8 +301,33 @@ export default function App() {
     }
   };
 
-  const handleUpdateStudentProfile = (updatedProfile: StudentProfile) => {
+  const handleUpdateStudentProfile = async (updatedProfile: StudentProfile) => {
+    if (currentUser && shouldUseRemoteApi()) {
+      try {
+        await updateRemoteStudentProfile(currentUser.id, updatedProfile.userId, updatedProfile);
+        await refreshRemoteState();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
     setStudentProfiles(prev => prev.map(s => s.userId === updatedProfile.userId ? updatedProfile : s));
+  };
+
+  const handleUpdateCompanyProfile = async (updatedProfile: CompanyProfile) => {
+    if (currentUser && shouldUseRemoteApi()) {
+      try {
+        await updateRemoteCompanyProfile(currentUser.id, updatedProfile.userId, updatedProfile);
+        await refreshRemoteState();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
+    setCompanyProfiles(prev => prev.map(c => c.userId === updatedProfile.userId ? updatedProfile : c));
+    setProjects(prev => prev.map(p => p.companyId === updatedProfile.userId ? { ...p, companyName: updatedProfile.companyName, companyLogo: updatedProfile.logoUrl } : p));
   };
 
   // Company Actions
@@ -599,6 +626,7 @@ export default function App() {
               allWarnings={warnings}
               allUsers={users}
               onCreateProject={handleCreateProject}
+              onUpdateCompanyProfile={handleUpdateCompanyProfile}
               onUpdateApplicationStatus={handleUpdateApplicationStatus}
               onSubmitWeeklyEvaluation={handleSubmitWeeklyEvaluation}
               onSubmitFinalHiring={handleSubmitFinalHiring}

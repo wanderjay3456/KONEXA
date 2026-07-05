@@ -14,7 +14,7 @@ import {
   initialUsers
 } from '../mockData';
 import { AuditLog, DomainEvent, PlatformState, TrustScore } from '../platform/domain/enterpriseCore';
-import { FinalProjectEvaluation, Notification } from '../types';
+import { FinalProjectEvaluation, Notification, ProfileVersion } from '../types';
 
 export interface PersistedPlatformState extends PlatformState {
   finalEvaluations: FinalProjectEvaluation[];
@@ -22,6 +22,7 @@ export interface PersistedPlatformState extends PlatformState {
   auditLogs: AuditLog[];
   domainEvents: DomainEvent[];
   trustScores: TrustScore[];
+  profileVersions: ProfileVersion[];
 }
 
 export interface PlatformRepository {
@@ -45,7 +46,8 @@ function initialState(): PersistedPlatformState {
     warnings: initialStudentWarnings,
     auditLogs: [],
     domainEvents: [],
-    trustScores: []
+    trustScores: [],
+    profileVersions: []
   };
 }
 
@@ -56,7 +58,8 @@ function mergeWithInitial(value: Partial<PersistedPlatformState>): PersistedPlat
     ...value,
     auditLogs: value.auditLogs ?? [],
     domainEvents: value.domainEvents ?? [],
-    trustScores: value.trustScores ?? []
+    trustScores: value.trustScores ?? [],
+    profileVersions: value.profileVersions ?? []
   };
 }
 
@@ -97,7 +100,7 @@ export class JsonFilePlatformRepository implements PlatformRepository {
 
 export function appendOperationalState(
   state: PersistedPlatformState,
-  records: { auditLogs?: AuditLog[]; domainEvents?: DomainEvent[]; trustScores?: TrustScore[] }
+  records: { auditLogs?: AuditLog[]; domainEvents?: DomainEvent[]; trustScores?: TrustScore[]; profileVersions?: ProfileVersion[] }
 ): PersistedPlatformState {
   const trustScoreMap = new Map(state.trustScores.map((item) => [`${item.entityType}:${item.entityId}`, item]));
   (records.trustScores ?? []).forEach((item) => trustScoreMap.set(`${item.entityType}:${item.entityId}`, item));
@@ -106,6 +109,7 @@ export function appendOperationalState(
     ...state,
     auditLogs: [...records.auditLogs ?? [], ...state.auditLogs].slice(0, 2000),
     domainEvents: [...records.domainEvents ?? [], ...state.domainEvents].slice(0, 2000),
-    trustScores: Array.from(trustScoreMap.values())
+    trustScores: Array.from(trustScoreMap.values()),
+    profileVersions: [...records.profileVersions ?? [], ...state.profileVersions].slice(0, 1000)
   };
 }

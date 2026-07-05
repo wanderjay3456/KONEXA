@@ -51,7 +51,9 @@ export interface StudentProfile {
   major: string;
   graduationDate: string;
   englishProficiency: string;
+  languages?: string[];
   skills: string[];
+  certificates?: string[];
   portfolioUrl: string;
   githubUrl: string;
   linkedinUrl: string;
@@ -61,6 +63,14 @@ export interface StudentProfile {
   preferredIndustry: string;
   preferredRole: string;
   availability: string; // e.g. "20 hours/week"
+  biography?: string;
+  careerGoals?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  notificationPreferences?: NotificationPreferences;
+  privacySettings?: PrivacySettings;
+  profileVersion?: number;
+  updatedAt?: string;
 }
 
 export interface CompanyProfile {
@@ -68,12 +78,60 @@ export interface CompanyProfile {
   companyName: string;
   logoUrl: string;
   industry: string;
+  description?: string;
   website: string;
   location: string;
   companySize: string;
   englishAvailability: string;
+  hiringPreferences?: string[];
+  preferredMajors?: string[];
+  preferredSkills?: string[];
+  languages?: string[];
+  recruitmentStatus?: 'OPEN' | 'PAUSED' | 'CLOSED';
+  contactEmail?: string;
+  contactPhone?: string;
+  notificationPreferences?: NotificationPreferences;
+  teamMembers?: CompanyTeamMember[];
+  employerBranding?: string;
   verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED';
   businessRegistrationFile?: string;
+  profileVersion?: number;
+  updatedAt?: string;
+}
+
+export interface NotificationPreferences {
+  inApp: boolean;
+  email: boolean;
+  projectUpdates: boolean;
+  applicationUpdates: boolean;
+  aiRecommendations: boolean;
+  trustUpdates: boolean;
+  weeklyReminders: boolean;
+}
+
+export interface PrivacySettings {
+  showPortfolio: boolean;
+  showGithub: boolean;
+  showLinkedIn: boolean;
+  allowCompanyDiscovery: boolean;
+}
+
+export interface CompanyTeamMember {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+}
+
+export interface ProfileVersion {
+  id: string;
+  profileType: 'STUDENT' | 'COMPANY';
+  profileId: string;
+  version: number;
+  changedBy: string;
+  changedFields: string[];
+  snapshot: StudentProfile | CompanyProfile;
+  createdAt: string;
 }
 
 export interface ProjectMilestone {

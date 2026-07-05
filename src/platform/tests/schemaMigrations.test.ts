@@ -20,11 +20,15 @@ const requiredTables = [
   'notifications',
   'audit_logs',
   'domain_events',
-  'trust_scores'
+  'trust_scores',
+  'profile_versions'
 ];
 
 test('initial migration contains every production table and RLS activation', () => {
-  const sql = fs.readFileSync(migrationPath, 'utf8');
+  const sql = [
+    fs.readFileSync(migrationPath, 'utf8'),
+    fs.readFileSync(path.resolve('supabase/migrations/202607050002_profile_management_sync.sql'), 'utf8')
+  ].join('\n');
 
   for (const table of requiredTables) {
     assert.match(sql, new RegExp(`create table if not exists ${table}`));
@@ -46,4 +50,6 @@ test('REST contract includes core project-first hiring endpoints', () => {
   assert.ok(restApiContract.includes('POST /api/projects/:projectId/applications'));
   assert.ok(restApiContract.includes('POST /api/submissions/:submissionId/evaluations'));
   assert.ok(restApiContract.includes('GET /api/trust-scores/:entityType/:entityId'));
+  assert.ok(restApiContract.includes('PATCH /api/students/:studentId/profile'));
+  assert.ok(restApiContract.includes('PATCH /api/companies/:companyId/profile'));
 });

@@ -190,3 +190,49 @@ test('server can serve production frontend assets beside API routes', async () =
     assert.match(await page.text(), /KONEXA/);
   });
 });
+
+test('profile update API versions student profile and propagates displayed identity', async () => {
+  await withApi(async (baseUrl) => {
+    const updated = await json(`${baseUrl}/api/students/user_student_1/profile`, {
+      method: 'PATCH',
+      headers: { 'x-konexa-user-id': 'user_student_1' },
+      body: JSON.stringify({
+        fullName: 'Nguyen Minh Anh Tran',
+        skills: ['React', 'TypeScript', 'Supabase'],
+        biography: 'Evidence-first software engineer focused on healthcare AI delivery.',
+        contactEmail: 'minh.anh@rmit.edu.vn'
+      })
+    });
+
+    assert.equal(updated.response.status, 200);
+    assert.equal(updated.body.profileVersion, 2);
+
+    const state = await json(`${baseUrl}/api/state`);
+    assert.ok(state.body.profileVersions.length === 1);
+    assert.ok(state.body.domainEvents?.length === undefined);
+
+    const audit = await json(`${baseUrl}/api/audit-logs`);
+    assert.ok(audit.body.some((item: { action: string }) => item.action === 'student.updated'));
+  });
+});
+
+test('profile update API versions company profile and propagates project branding', async () => {
+  await withApi(async (baseUrl) => {
+    const updated = await json(`${baseUrl}/api/companies/user_company_1/profile`, {
+      method: 'PATCH',
+      headers: { 'x-konexa-user-id': 'user_company_1' },
+      body: JSON.stringify({
+        companyName: 'VUNO Global AI',
+        description: 'Explainable healthcare AI partner for project-first global hiring.',
+        preferredSkills: ['React', 'TypeScript', 'Healthcare AI'],
+        recruitmentStatus: 'OPEN'
+      })
+    });
+
+    assert.equal(updated.response.status, 200);
+    assert.equal(updated.body.profileVersion, 2);
+
+    const projects = await json(`${baseUrl}/api/projects`);
+    assert.ok(projects.body.some((item: { companyName: string }) => item.companyName === 'VUNO Global AI'));
+  });
+});

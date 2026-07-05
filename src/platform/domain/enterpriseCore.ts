@@ -4,6 +4,7 @@ import {
   CompanyEvaluation,
   CompanyProfile,
   HiringDecision,
+  ProfileVersion,
   Project,
   ProjectStatus,
   StudentProfile,
@@ -27,7 +28,11 @@ export type DomainEventType =
   | 'evaluation.final_created'
   | 'verification.approved'
   | 'warning.issued'
-  | 'trust.score_recalculated';
+  | 'trust.score_recalculated'
+  | 'student.updated'
+  | 'company.updated'
+  | 'ai.context_invalidated'
+  | 'notification.created';
 
 export interface DomainEvent<TPayload = Record<string, unknown>> {
   id: string;
@@ -76,6 +81,7 @@ export interface MutationResult<T> {
   events: DomainEvent[];
   auditLogs: AuditLog[];
   trustScores: TrustScore[];
+  profileVersion?: ProfileVersion;
 }
 
 export class DomainRuleError extends Error {
@@ -153,6 +159,36 @@ function assertText(value: string | undefined, field: string, actor: Actor, reso
   }
 }
 
+function assertOptionalUrl(value: string | undefined, field: string, actor: Actor) {
+  if (!value) return;
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported protocol');
+  } catch {
+    deny(actor, 'validation.failed', 'profile', field, `${field} must be a valid HTTP URL.`);
+  }
+}
+
+function assertOptionalEmail(value: string | undefined, field: string, actor: Actor) {
+  if (!value) return;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    deny(actor, 'validation.failed', 'profile', field, `${field} must be a valid email address.`);
+  }
+}
+
+function cleanStringArray(value: string[] | undefined, field: string, actor: Actor) {
+  if (!value) return undefined;
+  const cleaned = value.map((item) => item.trim()).filter(Boolean);
+  if (cleaned.length !== value.length) {
+    deny(actor, 'validation.failed', 'profile', field, `${field} cannot contain empty values.`);
+  }
+  return Array.from(new Set(cleaned));
+}
+
+function changedFields<T extends Record<string, unknown>>(previous: T, next: T) {
+  return Object.keys(next).filter((key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]));
+}
+
 function assertRating(value: number, field: string, actor: Actor) {
   if (!Number.isFinite(value) || value < 1 || value > 5) {
     deny(actor, 'validation.failed', 'rating', field, `${field} must be a number between 1 and 5.`);
@@ -192,6 +228,137 @@ export function calculateStudentTrustScore(
       `${studentWarnings.length} administrative warnings`
     ],
     recalculatedAt: nowIso()
+  };
+}
+
+export function updateStudentProfile(
+  actor: Actor,
+  current: StudentProfile,
+  patch: Partial<StudentProfile>
+): MutationResult<StudentProfile> {
+  requireActiveVerified(actor, 'student.updated', 'student_profile', current.userId);
+  requireRole(actor, [UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN], 'student.updated', 'student_profile', current.userId);
+  if (actor.role === UserRole.STUDENT && actor.id !== current.userId) {
+    deny(actor, 'student.updated', 'student_profile', current.userId, 'Students can only update their own profile.');
+  }
+
+  const next: StudentProfile = {
+    ...current,
+    ...patch,
+    userId: current.userId,
+    fullName: patch.fullName?.trim() ?? current.fullName,
+    university: patch.university?.trim() ?? current.university,
+    major: patch.major?.trim() ?? current.major,
+    englishProficiency: patch.englishProficiency?.trim() ?? current.englishProficiency,
+    skills: cleanStringArray(patch.skills, 'skills', actor) ?? current.skills,
+    languages: cleanStringArray(patch.languages, 'languages', actor) ?? current.languages,
+    certificates: cleanStringArray(patch.certificates, 'certificates', actor) ?? current.certificates,
+    biography: patch.biography?.trim() ?? current.biography,
+    careerGoals: patch.careerGoals?.trim() ?? current.careerGoals,
+    profileVersion: (current.profileVersion ?? 1) + 1,
+    updatedAt: nowIso()
+  };
+
+  assertText(next.fullName, 'fullName', actor, 'student_profile');
+  assertText(next.university, 'university', actor, 'student_profile');
+  assertText(next.major, 'major', actor, 'student_profile');
+  assertText(next.englishProficiency, 'englishProficiency', actor, 'student_profile');
+  if (!next.skills.length) deny(actor, 'validation.failed', 'student_profile', current.userId, 'At least one verified skill is required.');
+  assertOptionalUrl(next.avatarUrl, 'avatarUrl', actor);
+  assertOptionalUrl(next.portfolioUrl, 'portfolioUrl', actor);
+  assertOptionalUrl(next.githubUrl, 'githubUrl', actor);
+  assertOptionalUrl(next.linkedinUrl, 'linkedinUrl', actor);
+  assertOptionalEmail(next.contactEmail, 'contactEmail', actor);
+
+  const fields = changedFields(current as unknown as Record<string, unknown>, next as unknown as Record<string, unknown>);
+  if (fields.length === 0) {
+    deny(actor, 'validation.failed', 'student_profile', current.userId, 'Profile update must change at least one field.');
+  }
+
+  const profileVersion: ProfileVersion = {
+    id: id('profile_version'),
+    profileType: 'STUDENT',
+    profileId: current.userId,
+    version: next.profileVersion ?? 1,
+    changedBy: actor.id,
+    changedFields: fields,
+    snapshot: next,
+    createdAt: nowIso()
+  };
+
+  return {
+    entity: next,
+    profileVersion,
+    events: [
+      event('student.updated', actor, current.userId, { changedFields: fields, version: profileVersion.version }),
+      event('ai.context_invalidated', actor, current.userId, { profileType: 'STUDENT', engines: ['memory', 'prompt', 'matching', 'growth', 'resume', 'portfolio', 'recommendation'] })
+    ],
+    auditLogs: [audit(actor, 'student.updated', 'student_profile', current.userId, 'ALLOW', 'Student profile updated with versioned evidence.', { changedFields: fields })],
+    trustScores: []
+  };
+}
+
+export function updateCompanyProfile(
+  actor: Actor,
+  current: CompanyProfile,
+  patch: Partial<CompanyProfile>
+): MutationResult<CompanyProfile> {
+  requireActiveVerified(actor, 'company.updated', 'company_profile', current.userId);
+  requireRole(actor, [UserRole.COMPANY, UserRole.ADMIN, UserRole.SUPER_ADMIN], 'company.updated', 'company_profile', current.userId);
+  if (actor.role === UserRole.COMPANY && actor.id !== current.userId) {
+    deny(actor, 'company.updated', 'company_profile', current.userId, 'Companies can only update their own profile.');
+  }
+
+  const next: CompanyProfile = {
+    ...current,
+    ...patch,
+    userId: current.userId,
+    companyName: patch.companyName?.trim() ?? current.companyName,
+    industry: patch.industry?.trim() ?? current.industry,
+    website: patch.website?.trim() ?? current.website,
+    location: patch.location?.trim() ?? current.location,
+    companySize: patch.companySize?.trim() ?? current.companySize,
+    englishAvailability: patch.englishAvailability?.trim() ?? current.englishAvailability,
+    hiringPreferences: cleanStringArray(patch.hiringPreferences, 'hiringPreferences', actor) ?? current.hiringPreferences,
+    preferredMajors: cleanStringArray(patch.preferredMajors, 'preferredMajors', actor) ?? current.preferredMajors,
+    preferredSkills: cleanStringArray(patch.preferredSkills, 'preferredSkills', actor) ?? current.preferredSkills,
+    languages: cleanStringArray(patch.languages, 'languages', actor) ?? current.languages,
+    profileVersion: (current.profileVersion ?? 1) + 1,
+    updatedAt: nowIso()
+  };
+
+  assertText(next.companyName, 'companyName', actor, 'company_profile');
+  assertText(next.industry, 'industry', actor, 'company_profile');
+  assertText(next.location, 'location', actor, 'company_profile');
+  assertOptionalUrl(next.logoUrl, 'logoUrl', actor);
+  assertOptionalUrl(next.website, 'website', actor);
+  assertOptionalEmail(next.contactEmail, 'contactEmail', actor);
+
+  const fields = changedFields(current as unknown as Record<string, unknown>, next as unknown as Record<string, unknown>);
+  if (fields.length === 0) {
+    deny(actor, 'validation.failed', 'company_profile', current.userId, 'Profile update must change at least one field.');
+  }
+
+  const profileVersion: ProfileVersion = {
+    id: id('profile_version'),
+    profileType: 'COMPANY',
+    profileId: current.userId,
+    version: next.profileVersion ?? 1,
+    changedBy: actor.id,
+    changedFields: fields,
+    snapshot: next,
+    createdAt: nowIso()
+  };
+
+  return {
+    entity: next,
+    profileVersion,
+    events: [
+      event('company.updated', actor, current.userId, { changedFields: fields, version: profileVersion.version }),
+      event('ai.context_invalidated', actor, current.userId, { profileType: 'COMPANY', engines: ['matching', 'recruiter', 'recommendation', 'trust', 'analytics'] })
+    ],
+    auditLogs: [audit(actor, 'company.updated', 'company_profile', current.userId, 'ALLOW', 'Company profile updated with versioned employer evidence.', { changedFields: fields })],
+    trustScores: []
   };
 }
 

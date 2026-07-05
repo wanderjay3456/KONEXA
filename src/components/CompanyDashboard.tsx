@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Building2, 
@@ -47,6 +47,7 @@ interface CompanyDashboardProps {
   allWarnings: StudentWarning[];
   allUsers: User[];
   onCreateProject: (projectData: Omit<Project, 'id' | 'companyId' | 'companyName' | 'companyLogo' | 'createdAt'>) => void;
+  onUpdateCompanyProfile: (updatedProfile: CompanyProfile) => void;
   onUpdateApplicationStatus: (applicationId: string, status: ApplicationStatus) => void;
   onSubmitWeeklyEvaluation: (submissionId: string, projectId: string, studentId: string, weekNumber: number, evaluation: {
     communication: number;
@@ -72,6 +73,7 @@ export default function CompanyDashboard({
   allWarnings,
   allUsers,
   onCreateProject,
+  onUpdateCompanyProfile,
   onUpdateApplicationStatus,
   onSubmitWeeklyEvaluation,
   onSubmitFinalHiring,
@@ -89,6 +91,8 @@ export default function CompanyDashboard({
   const [newHours, setNewHours] = useState(15);
   const [formSuccess, setFormSuccess] = useState('');
   const [matchingSelectedProjectId, setMatchingSelectedProjectId] = useState<string>('');
+  const [editCompanyProfile, setEditCompanyProfile] = useState<CompanyProfile>({ ...companyProfile });
+  const [companyProfileSuccess, setCompanyProfileSuccess] = useState('');
 
   // Weekly review state
   const [evaluatingSubmission, setEvaluatingSubmission] = useState<WeeklySubmission | null>(null);
@@ -113,6 +117,10 @@ export default function CompanyDashboard({
 
   // Submissions sent to this company's projects
   const companySubmissions = allSubmissions.filter(s => companyProjectIds.includes(s.projectId));
+
+  useEffect(() => {
+    setEditCompanyProfile({ ...companyProfile });
+  }, [companyProfile]);
 
   // Handle Project Creation
   const handleCreateSubmit = (e: React.FormEvent) => {
@@ -172,6 +180,13 @@ export default function CompanyDashboard({
     onSubmitFinalHiring(hiringStudent.projectId, hiringStudent.studentId, selectedDecision, finalFeedback);
     setHiringStudent(null);
     setFinalFeedback('');
+  };
+
+  const handleCompanyProfileSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    onUpdateCompanyProfile(editCompanyProfile);
+    setCompanyProfileSuccess('Company profile synchronized across projects, matching and AI recruiter context.');
+    setTimeout(() => setCompanyProfileSuccess(''), 3000);
   };
 
   return (
@@ -259,6 +274,12 @@ export default function CompanyDashboard({
                 className={`w-full text-left px-4 py-3 rounded-xl text-xs font-semibold flex items-center gap-2.5 transition-all ${activeSubTab === 'create' ? 'bg-sky-400 text-black shadow-md' : 'text-neutral-400 hover:bg-neutral-900 hover:text-white'}`}
               >
                 <Plus className="w-4 h-4" /> Post Validation Project
+              </button>
+              <button
+                onClick={() => setActiveSubTab('settings')}
+                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-semibold flex items-center gap-2.5 transition-all ${activeSubTab === 'settings' ? 'bg-sky-400 text-black shadow-md' : 'text-neutral-400 hover:bg-neutral-900 hover:text-white'}`}
+              >
+                <Settings className="w-4 h-4" /> Company Profile
               </button>
             </div>
           </div>
@@ -815,6 +836,121 @@ export default function CompanyDashboard({
                     );
                   })()
                 )}
+              </motion.div>
+            )}
+
+            {activeSubTab === 'settings' && (
+              <motion.div
+                key="settings"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                <div className="p-6 rounded-3xl bg-neutral-900/30 border border-neutral-900">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                    <div>
+                      <h3 className="text-lg font-black text-neutral-100">Company Profile</h3>
+                      <p className="text-xs text-neutral-500 mt-1">Version {editCompanyProfile.profileVersion ?? 1} · synchronized with matching and AI recruiter context</p>
+                    </div>
+                    {companyProfileSuccess && (
+                      <div className="px-4 py-2 rounded-xl bg-emerald-950/30 border border-emerald-900 text-xs text-emerald-300">
+                        {companyProfileSuccess}
+                      </div>
+                    )}
+                  </div>
+
+                  <form onSubmit={handleCompanyProfileSave} className="space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {[
+                        ['Company name', 'companyName'],
+                        ['Logo URL', 'logoUrl'],
+                        ['Industry', 'industry'],
+                        ['Website', 'website'],
+                        ['Location', 'location'],
+                        ['Company size', 'companySize'],
+                        ['Contact email', 'contactEmail'],
+                        ['Contact phone', 'contactPhone']
+                      ].map(([label, key]) => (
+                        <div key={key} className="space-y-1">
+                          <label className="text-xs text-neutral-400">{label}</label>
+                          <input
+                            type={key === 'website' || key === 'logoUrl' ? 'url' : 'text'}
+                            value={String(editCompanyProfile[key as keyof CompanyProfile] ?? '')}
+                            onChange={(e) => setEditCompanyProfile({ ...editCompanyProfile, [key]: e.target.value })}
+                            className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs text-neutral-200 focus:outline-none focus:border-sky-400"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs text-neutral-400">Recruitment status</label>
+                        <select
+                          value={editCompanyProfile.recruitmentStatus ?? 'OPEN'}
+                          onChange={(e) => setEditCompanyProfile({ ...editCompanyProfile, recruitmentStatus: e.target.value as CompanyProfile['recruitmentStatus'] })}
+                          className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs text-neutral-200 focus:outline-none focus:border-sky-400"
+                        >
+                          <option value="OPEN">Open</option>
+                          <option value="PAUSED">Paused</option>
+                          <option value="CLOSED">Closed</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-neutral-400">Languages</label>
+                        <input
+                          value={(editCompanyProfile.languages ?? []).join(', ')}
+                          onChange={(e) => setEditCompanyProfile({ ...editCompanyProfile, languages: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                          className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs text-neutral-200 focus:outline-none focus:border-sky-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {[
+                        ['Preferred skills', 'preferredSkills'],
+                        ['Preferred majors', 'preferredMajors'],
+                        ['Hiring preferences', 'hiringPreferences']
+                      ].map(([label, key]) => (
+                        <div key={key} className="space-y-1">
+                          <label className="text-xs text-neutral-400">{label}</label>
+                          <textarea
+                            rows={3}
+                            value={((editCompanyProfile[key as keyof CompanyProfile] as string[] | undefined) ?? []).join(', ')}
+                            onChange={(e) => setEditCompanyProfile({ ...editCompanyProfile, [key]: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                            className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs text-neutral-200 focus:outline-none focus:border-sky-400"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs text-neutral-400">Company description</label>
+                        <textarea
+                          rows={5}
+                          value={editCompanyProfile.description ?? ''}
+                          onChange={(e) => setEditCompanyProfile({ ...editCompanyProfile, description: e.target.value })}
+                          className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs text-neutral-200 focus:outline-none focus:border-sky-400"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-neutral-400">Employer branding</label>
+                        <textarea
+                          rows={5}
+                          value={editCompanyProfile.employerBranding ?? ''}
+                          onChange={(e) => setEditCompanyProfile({ ...editCompanyProfile, employerBranding: e.target.value })}
+                          className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs text-neutral-200 focus:outline-none focus:border-sky-400"
+                        />
+                      </div>
+                    </div>
+
+                    <button type="submit" className="px-6 py-3 bg-sky-400 hover:bg-sky-300 text-black font-black text-xs rounded-xl transition-colors">
+                      Save Company Profile
+                    </button>
+                  </form>
+                </div>
               </motion.div>
             )}
 

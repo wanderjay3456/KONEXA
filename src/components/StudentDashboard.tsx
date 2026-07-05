@@ -186,6 +186,11 @@ export default function StudentDashboard({
   const [editProfile, setEditProfile] = useState<StudentProfile>({ ...studentProfile });
   const [profileSuccessMsg, setProfileSuccessMsg] = useState('');
 
+  useEffect(() => {
+    setEditProfile({ ...studentProfile });
+    setPortfolioUrl(studentProfile.portfolioUrl || '');
+  }, [studentProfile]);
+
   // Filter projects by open state
   const openProjects = allProjects.filter(p => p.status === ProjectStatus.OPEN || p.status === ProjectStatus.RUNNING);
 
@@ -1197,6 +1202,134 @@ export default function StudentDashboard({
                           onChange={(e) => setEditProfile({ ...editProfile, availability: e.target.value })}
                           className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-emerald-400"
                         />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {[
+                        ['Profile photo URL', 'avatarUrl'],
+                        ['Resume file', 'resumeFileName'],
+                        ['Portfolio URL', 'portfolioUrl'],
+                        ['GitHub URL', 'githubUrl'],
+                        ['LinkedIn URL', 'linkedinUrl'],
+                        ['Contact email', 'contactEmail'],
+                        ['Contact phone', 'contactPhone'],
+                        ['Preferred country', 'preferredCountry'],
+                        ['Preferred industry', 'preferredIndustry'],
+                        ['Preferred role', 'preferredRole']
+                      ].map(([label, key]) => (
+                        <div key={key} className="space-y-1">
+                          <label className="text-xs text-neutral-400">{label}</label>
+                          <input
+                            type={key.toLowerCase().includes('url') ? 'url' : 'text'}
+                            value={String(editProfile[key as keyof StudentProfile] ?? '')}
+                            onChange={(e) => setEditProfile({ ...editProfile, [key]: e.target.value })}
+                            className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-emerald-400"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {[
+                        ['Languages', 'languages'],
+                        ['Skills', 'skills'],
+                        ['Certificates', 'certificates']
+                      ].map(([label, key]) => (
+                        <div key={key} className="space-y-1">
+                          <label className="text-xs text-neutral-400">{label}</label>
+                          <textarea
+                            rows={3}
+                            value={((editProfile[key as keyof StudentProfile] as string[] | undefined) ?? []).join(', ')}
+                            onChange={(e) => setEditProfile({ ...editProfile, [key]: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                            className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-emerald-400"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs text-neutral-400">Biography</label>
+                        <textarea
+                          rows={4}
+                          value={editProfile.biography ?? ''}
+                          onChange={(e) => setEditProfile({ ...editProfile, biography: e.target.value })}
+                          className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-emerald-400"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-neutral-400">Career goals</label>
+                        <textarea
+                          rows={4}
+                          value={editProfile.careerGoals ?? ''}
+                          onChange={(e) => setEditProfile({ ...editProfile, careerGoals: e.target.value })}
+                          className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-emerald-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-900 space-y-3">
+                        <h4 className="text-xs font-bold text-neutral-300">Notification preferences</h4>
+                        {[
+                          ['In-app', 'inApp'],
+                          ['Email', 'email'],
+                          ['Project updates', 'projectUpdates'],
+                          ['Application updates', 'applicationUpdates'],
+                          ['AI recommendations', 'aiRecommendations'],
+                          ['Trust updates', 'trustUpdates'],
+                          ['Weekly reminders', 'weeklyReminders']
+                        ].map(([label, key]) => {
+                          const prefs = editProfile.notificationPreferences ?? {
+                            inApp: true,
+                            email: true,
+                            projectUpdates: true,
+                            applicationUpdates: true,
+                            aiRecommendations: true,
+                            trustUpdates: true,
+                            weeklyReminders: true
+                          };
+                          return (
+                            <label key={key} className="flex items-center justify-between text-xs text-neutral-400">
+                              <span>{label}</span>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(prefs[key as keyof typeof prefs])}
+                                onChange={(e) => setEditProfile({ ...editProfile, notificationPreferences: { ...prefs, [key]: e.target.checked } })}
+                                className="accent-emerald-400"
+                              />
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-900 space-y-3">
+                        <h4 className="text-xs font-bold text-neutral-300">Privacy settings</h4>
+                        {[
+                          ['Show portfolio', 'showPortfolio'],
+                          ['Show GitHub', 'showGithub'],
+                          ['Show LinkedIn', 'showLinkedIn'],
+                          ['Allow company discovery', 'allowCompanyDiscovery']
+                        ].map(([label, key]) => {
+                          const settings = editProfile.privacySettings ?? {
+                            showPortfolio: true,
+                            showGithub: true,
+                            showLinkedIn: true,
+                            allowCompanyDiscovery: true
+                          };
+                          return (
+                            <label key={key} className="flex items-center justify-between text-xs text-neutral-400">
+                              <span>{label}</span>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(settings[key as keyof typeof settings])}
+                                onChange={(e) => setEditProfile({ ...editProfile, privacySettings: { ...settings, [key]: e.target.checked } })}
+                                className="accent-emerald-400"
+                              />
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
 
