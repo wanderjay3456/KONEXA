@@ -24,6 +24,12 @@ npm install
 npm run dev
 ```
 
+Run the production API in a second terminal:
+
+```bash
+npm run api
+```
+
 ## Validate
 
 ```bash
@@ -35,3 +41,20 @@ npm run build
 ## Production Notes
 
 See `docs/production-readiness.md` for domain rules, schema contracts, monitoring records, and the Supabase migration path.
+
+## Core API
+
+- `GET /api/health`
+- `GET /api/metrics`
+- `GET /api/state`
+- `GET /api/projects`
+- `POST /api/projects`
+- `POST /api/projects/:projectId/applications`
+- `PATCH /api/applications/:applicationId/status`
+- `POST /api/projects/:projectId/submissions`
+- `POST /api/submissions/:submissionId/evaluations`
+- `POST /api/projects/:projectId/final-evaluations`
+- `GET /api/audit-logs`
+- `GET /api/trust-scores/:entityType/:entityId`
+
+Write endpoints require `x-konexa-user-id` so every decision is tied to a verified platform actor.

@@ -7,7 +7,10 @@ KONEXA is implemented as a project-first hiring operating system. The current de
 - Business rules live in `src/platform/domain/enterpriseCore.ts`.
 - PostgreSQL/Supabase schema and REST contract live in `src/platform/schema/postgresSchema.ts`.
 - Browser-backed operational persistence for audit logs, domain events, trust scores, and monitoring metrics lives in `src/platform/services/operationalStore.ts`.
+- Production API routes live in `src/server/app.ts`.
+- File-backed server persistence lives in `src/server/repository.ts` and is configured by `KONEXA_DATA_FILE`.
 - Domain tests live in `src/platform/tests/enterpriseCore.test.ts`.
+- API integration tests live in `src/server/tests/api.test.ts`.
 - Admin architecture workspaces are lazy loaded to reduce initial production bundle size.
 
 ## Validation Flow
@@ -31,7 +34,12 @@ npm install
 npm run lint
 npm run test
 npm run build
+npm run api
 ```
+
+## Operational API
+
+The API exposes health, metrics, state read models, project creation, applications, weekly submissions, weekly evaluations, final hiring decisions, audit logs, and trust score read models. Write operations require `x-konexa-user-id` and are rejected if the actor is not permitted by the domain rules.
 
 ## Supabase Migration Path
 
