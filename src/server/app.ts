@@ -1,5 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
 import crypto from 'node:crypto';
+import path from 'node:path';
 import {
   createProject,
   DomainRuleError,
@@ -147,6 +148,19 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
     if (!score) return res.status(404).json({ error: { code: 'TRUST_SCORE_NOT_FOUND', message: 'Trust score has not been calculated yet.' } });
     res.json(score);
   });
+
+  if (config.serveStatic) {
+    const staticRoot = path.resolve(config.staticDir);
+    app.use(express.static(staticRoot, {
+      index: false,
+      maxAge: '1h',
+      etag: true
+    }));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api/')) return next();
+      res.sendFile(path.join(staticRoot, 'index.html'));
+    });
+  }
 
   app.post('/api/projects', (req: RequestWithActor, res, next) => {
     try {

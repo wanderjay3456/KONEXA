@@ -40,6 +40,20 @@ npm run test
 npm run build
 ```
 
+## Production Start
+
+```bash
+npm run build
+KONEXA_SERVE_STATIC=true npm start
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:KONEXA_SERVE_STATIC="true"
+npm start
+```
+
 ## Production Notes
 
 See `docs/production-readiness.md` for domain rules, schema contracts, monitoring records, and the Supabase migration path.

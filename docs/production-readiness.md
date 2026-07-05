@@ -38,6 +38,8 @@ npm run build
 npm run api
 ```
 
+For single-process deployment, build the frontend and run `npm start` with `KONEXA_SERVE_STATIC=true`. The API will continue to serve `/api/*` and will return the built React app for browser routes.
+
 ## Operational API
 
 The API exposes health, metrics, state read models, project creation, applications, weekly submissions, weekly evaluations, final hiring decisions, audit logs, and trust score read models. Write operations require `x-konexa-user-id` and are rejected if the actor is not permitted by the domain rules.

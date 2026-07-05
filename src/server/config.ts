@@ -4,6 +4,8 @@ export interface ServerConfig {
   corsOrigin: string;
   requestBodyLimit: string;
   apiKey?: string;
+  serveStatic: boolean;
+  staticDir: string;
 }
 
 function readNumber(value: string | undefined, fallback: number) {
@@ -17,6 +19,8 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     dataFile: env.KONEXA_DATA_FILE || '.konexa-data/platform-state.json',
     corsOrigin: env.KONEXA_CORS_ORIGIN || 'http://localhost:3000',
     requestBodyLimit: env.KONEXA_REQUEST_BODY_LIMIT || '1mb',
-    apiKey: env.KONEXA_API_KEY
+    apiKey: env.KONEXA_API_KEY,
+    serveStatic: env.KONEXA_SERVE_STATIC === 'true',
+    staticDir: env.KONEXA_STATIC_DIR || 'dist'
   };
 }

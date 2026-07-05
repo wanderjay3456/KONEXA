@@ -52,6 +52,33 @@ async function withSecureApi(run: (baseUrl: string) => Promise<void>) {
   }
 }
 
+async function withStaticApi(run: (baseUrl: string) => Promise<void>) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'konexa-api-static-'));
+  const staticDir = path.join(dir, 'dist');
+  fs.mkdirSync(staticDir, { recursive: true });
+  fs.writeFileSync(path.join(staticDir, 'index.html'), '<!doctype html><title>KONEXA</title><div id="root"></div>');
+
+  const repository = new JsonFilePlatformRepository(path.join(dir, 'state.json'));
+  const app = createKonexaApp(repository, {
+    ...loadServerConfig({}),
+    port: 0,
+    dataFile: path.join(dir, 'state.json'),
+    corsOrigin: 'http://localhost:3000',
+    serveStatic: true,
+    staticDir
+  });
+  const server = createServer(app);
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const { port } = server.address() as AddressInfo;
+  try {
+    await run(`http://127.0.0.1:${port}`);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function json(url: string, init?: RequestInit) {
   const response = await fetch(url, {
     ...init,
@@ -150,5 +177,16 @@ test('configured API key protects operational endpoints and preserves health che
     });
     assert.equal(allowed.response.status, 200);
     assert.ok(allowed.body.projects.length >= 1);
+  });
+});
+
+test('server can serve production frontend assets beside API routes', async () => {
+  await withStaticApi(async (baseUrl) => {
+    const api = await json(`${baseUrl}/api/health`);
+    assert.equal(api.response.status, 200);
+
+    const page = await fetch(`${baseUrl}/student/dashboard`);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /KONEXA/);
   });
 });
