@@ -4,6 +4,8 @@ import path from 'node:path';
 import {
   createProject,
   DomainRuleError,
+  approveUserVerification,
+  issueStudentWarning,
   submitApplication,
   submitFinalEvaluation,
   submitWeeklyEvaluation,
@@ -348,6 +350,65 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
       }));
       metrics.writeCount += 1;
       res.json(nextNotification);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/admin/verifications/:userId/approve', (req: RequestWithActor, res, next) => {
+    try {
+      const actor = requireActor(req, repository);
+      const state = repository.read();
+      const target = state.users.find((item) => item.id === req.params.userId);
+      if (!target) return res.status(404).json({ error: { code: 'USER_NOT_FOUND', message: 'User does not exist.' } });
+      const companyProfile = state.companyProfiles.find((item) => item.userId === target.id);
+      const result = approveUserVerification(actor, target, companyProfile);
+
+      repository.update((current) => appendOperationalState({
+        ...current,
+        users: current.users.map((item) => item.id === target.id ? result.entity.user : item),
+        companyProfiles: result.entity.companyProfile
+          ? current.companyProfiles.map((item) => item.userId === result.entity.companyProfile?.userId ? result.entity.companyProfile : item)
+          : current.companyProfiles,
+        notifications: [
+          notification(target.id, 'Verification Approved', 'Your KONEXA account has been verified for project-first hiring workflows.', 'success', { category: 'TRUST', priority: 'HIGH', channels: ['IN_APP', 'EMAIL'] }),
+          ...current.notifications
+        ]
+      }, {
+        auditLogs: result.auditLogs,
+        domainEvents: result.events,
+        trustScores: result.trustScores
+      }));
+      metrics.writeCount += 1;
+      res.json(result.entity);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/admin/students/:studentId/warnings', (req: RequestWithActor, res, next) => {
+    try {
+      const actor = requireActor(req, repository);
+      const body = asObject(req.body);
+      const result = issueStudentWarning(actor, repository.read(), {
+        studentId: req.params.studentId,
+        reason: readString(body, 'reason', 10)
+      });
+
+      repository.update((current) => appendOperationalState({
+        ...current,
+        warnings: [result.entity, ...current.warnings],
+        notifications: [
+          notification(result.entity.studentId, 'Administrator Action Warning', `You have received a formal warning: "${result.entity.reason}".`, 'warning', { category: 'TRUST', priority: 'CRITICAL', channels: ['IN_APP', 'EMAIL'] }),
+          ...current.notifications
+        ]
+      }, {
+        auditLogs: result.auditLogs,
+        domainEvents: result.events,
+        trustScores: result.trustScores
+      }));
+      metrics.writeCount += 1;
+      res.status(201).json(result.entity);
     } catch (error) {
       next(error);
     }

@@ -23,6 +23,8 @@ import { Archive, Bell, CheckCheck, Info, Sparkles, RefreshCw, Layers, X } from 
 import {
   createProject,
   DomainRuleError,
+  approveUserVerification,
+  issueStudentWarning,
   submitApplication,
   submitFinalEvaluation,
   submitWeeklyEvaluation,
@@ -32,8 +34,10 @@ import {
 import { appendOperationalRecords, recordDeniedAction } from './platform/services/operationalStore';
 import {
   createRemoteProject,
+  approveRemoteVerification,
   getRemotePlatformState,
   getRemoteNotifications,
+  issueRemoteStudentWarning,
   isKonexaApiEnabled,
   markAllRemoteNotificationsRead,
   submitRemoteApplication,
@@ -485,25 +489,68 @@ export default function App() {
   };
 
   // Admin Actions
-  const handleApproveStudent = (studentId: string) => {
-    setUsers(prev => prev.map(u => u.id === studentId ? { ...u, status: 'ACTIVE', isVerified: true } : u));
-    
-    // Notify Student
-    const newNotif: Notification = {
-      id: `notif_${Date.now()}`,
-      userId: studentId,
-      title: 'RMIT Account Verified',
-      message: 'Your university credentials have been verified by KONEXA Admins. You are now authorized to apply for global projects.',
-      type: 'success',
-      isRead: false,
-      createdAt: new Date().toISOString()
-    };
-    setNotifications(prev => [newNotif, ...prev]);
+  const handleApproveStudent = async (studentId: string) => {
+    if (!currentUser) return;
+    if (shouldUseRemoteApi()) {
+      try {
+        await approveRemoteVerification(currentUser.id, studentId);
+        await refreshRemoteState();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
+    const target = users.find(u => u.id === studentId);
+    if (!target) return;
+    try {
+      const result = approveUserVerification(currentUser, target);
+      setUsers(prev => prev.map(u => u.id === studentId ? result.entity.user : u));
+      appendOperationalRecords({ auditLogs: result.auditLogs, domainEvents: result.events, trustScores: result.trustScores });
+
+      const newNotif: Notification = {
+        id: `notif_${Date.now()}`,
+        userId: studentId,
+        title: 'RMIT Account Verified',
+        message: 'Your university credentials have been verified by KONEXA Admins. You are now authorized to apply for global projects.',
+        type: 'success',
+        priority: 'HIGH',
+        category: 'TRUST',
+        channels: ['IN_APP', 'EMAIL'],
+        isRead: false,
+        createdAt: new Date().toISOString()
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+    } catch (error) {
+      reportDomainError(error);
+    }
   };
 
-  const handleApproveCompany = (companyId: string) => {
-    setCompanyProfiles(prev => prev.map(c => c.userId === companyId ? { ...c, verificationStatus: 'VERIFIED' } : c));
-    setUsers(prev => prev.map(u => u.id === companyId ? { ...u, status: 'ACTIVE', isVerified: true } : u));
+  const handleApproveCompany = async (companyId: string) => {
+    if (!currentUser) return;
+    if (shouldUseRemoteApi()) {
+      try {
+        await approveRemoteVerification(currentUser.id, companyId);
+        await refreshRemoteState();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
+    const target = users.find(u => u.id === companyId);
+    const companyProfile = companyProfiles.find(c => c.userId === companyId);
+    if (!target) return;
+    try {
+      const result = approveUserVerification(currentUser, target, companyProfile);
+      setUsers(prev => prev.map(u => u.id === companyId ? result.entity.user : u));
+      if (result.entity.companyProfile) {
+        setCompanyProfiles(prev => prev.map(c => c.userId === companyId ? result.entity.companyProfile! : c));
+      }
+      appendOperationalRecords({ auditLogs: result.auditLogs, domainEvents: result.events, trustScores: result.trustScores });
+    } catch (error) {
+      reportDomainError(error);
+    }
   };
 
   const handleSubmitCompanyEvaluation = (evalData: Omit<CompanyEvaluation, 'id' | 'submittedAt'>) => {
@@ -527,26 +574,39 @@ export default function App() {
     setNotifications(prev => [newNotif, ...prev]);
   };
 
-  const handleIssueWarning = (studentId: string, reason: string) => {
-    const newWarning: StudentWarning = {
-      id: `warn_${Date.now()}`,
-      studentId,
-      reason,
-      createdAt: new Date().toISOString()
-    };
-    setWarnings(prev => [...prev, newWarning]);
+  const handleIssueWarning = async (studentId: string, reason: string) => {
+    if (!currentUser) return;
+    if (shouldUseRemoteApi()) {
+      try {
+        await issueRemoteStudentWarning(currentUser.id, studentId, reason);
+        await refreshRemoteState();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
 
-    // Send notification to student
-    const newNotif: Notification = {
-      id: `notif_${Date.now()}`,
-      userId: studentId,
-      title: 'Administrator Action Warning',
-      message: `You have received a formal warning: "${reason}". Three warnings trigger program review.`,
-      type: 'warning',
-      isRead: false,
-      createdAt: new Date().toISOString()
-    };
-    setNotifications(prev => [newNotif, ...prev]);
+    try {
+      const result = issueStudentWarning(currentUser, platformState(), { studentId, reason });
+      setWarnings(prev => [result.entity, ...prev]);
+      appendOperationalRecords({ auditLogs: result.auditLogs, domainEvents: result.events, trustScores: result.trustScores });
+
+      const newNotif: Notification = {
+        id: `notif_${Date.now()}`,
+        userId: studentId,
+        title: 'Administrator Action Warning',
+        message: `You have received a formal warning: "${reason}". Three warnings trigger program review.`,
+        type: 'warning',
+        priority: 'CRITICAL',
+        category: 'TRUST',
+        channels: ['IN_APP', 'EMAIL'],
+        isRead: false,
+        createdAt: new Date().toISOString()
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+    } catch (error) {
+      reportDomainError(error);
+    }
   };
 
   const visibleNotifications = currentUser

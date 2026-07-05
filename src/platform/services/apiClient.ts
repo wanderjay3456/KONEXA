@@ -181,3 +181,18 @@ export function markAllRemoteNotificationsRead(actorId: string) {
     headers: actorHeaders(actorId)
   });
 }
+
+export function approveRemoteVerification(actorId: string, userId: string) {
+  return request<{ user: User; companyProfile?: CompanyProfile }>(`/api/admin/verifications/${userId}/approve`, {
+    method: 'POST',
+    headers: actorHeaders(actorId)
+  });
+}
+
+export function issueRemoteStudentWarning(actorId: string, studentId: string, reason: string) {
+  return request<StudentWarning>(`/api/admin/students/${studentId}/warnings`, {
+    method: 'POST',
+    headers: actorHeaders(actorId),
+    body: JSON.stringify({ reason })
+  });
+}

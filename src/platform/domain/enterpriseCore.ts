@@ -456,6 +456,56 @@ export function updateApplicationStatus(
   };
 }
 
+export function approveUserVerification(
+  actor: Actor,
+  target: User,
+  companyProfile?: CompanyProfile
+): MutationResult<{ user: User; companyProfile?: CompanyProfile }> {
+  requireActiveVerified(actor, 'verification.approved', 'user', target.id);
+  requireRole(actor, [UserRole.ADMIN, UserRole.SUPER_ADMIN], 'verification.approved', 'user', target.id);
+  if (![UserRole.STUDENT, UserRole.COMPANY].includes(target.role)) {
+    deny(actor, 'verification.approved', 'user', target.id, 'Only student and company accounts can be approved through verification workflows.');
+  }
+
+  const user = { ...target, isVerified: true, status: 'ACTIVE' as const };
+  const approvedCompanyProfile = target.role === UserRole.COMPANY && companyProfile
+    ? { ...companyProfile, verificationStatus: 'VERIFIED' as const }
+    : companyProfile;
+
+  return {
+    entity: { user, companyProfile: approvedCompanyProfile },
+    events: [event('verification.approved', actor, target.id, { role: target.role })],
+    auditLogs: [audit(actor, 'verification.approved', 'user', target.id, 'ALLOW', 'Verified identity approved for project-first hiring participation.')],
+    trustScores: []
+  };
+}
+
+export function issueStudentWarning(
+  actor: Actor,
+  state: PlatformState,
+  input: { studentId: string; reason: string }
+): MutationResult<StudentWarning> {
+  requireActiveVerified(actor, 'warning.issued', 'student', input.studentId);
+  requireRole(actor, [UserRole.ADMIN, UserRole.SUPER_ADMIN], 'warning.issued', 'student', input.studentId);
+  const student = state.users.find((item) => item.id === input.studentId && item.role === UserRole.STUDENT);
+  if (!student) deny(actor, 'validation.failed', 'student', input.studentId, 'Student account must exist before a warning can be issued.');
+  assertText(input.reason, 'reason', actor, 'student_warning');
+
+  const entity: StudentWarning = {
+    id: id('warn'),
+    studentId: input.studentId,
+    reason: input.reason.trim(),
+    createdAt: nowIso()
+  };
+
+  return {
+    entity,
+    events: [event('warning.issued', actor, entity.id, { studentId: input.studentId })],
+    auditLogs: [audit(actor, 'warning.issued', 'student_warning', entity.id, 'ALLOW', 'Administrative warning issued with transparent reason.')],
+    trustScores: [calculateStudentTrustScore(input.studentId, state.evaluations, [...state.warnings, entity], state.submissions)]
+  };
+}
+
 export function submitWeeklyEvaluation(
   actor: Actor,
   state: PlatformState,

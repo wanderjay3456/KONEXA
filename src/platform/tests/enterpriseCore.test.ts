@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  approveUserVerification,
   createProject,
   DomainRuleError,
+  issueStudentWarning,
   submitApplication,
   submitFinalEvaluation,
   submitWeeklyEvaluation,
@@ -149,4 +151,29 @@ test('company profile updates are versioned and synchronized through events', ()
   assert.equal(result.entity.profileVersion, 2);
   assert.ok(result.profileVersion?.changedFields.includes('description'));
   assert.ok(result.events.some((item) => item.type === 'company.updated'));
+});
+
+test('admins approve pending users through audited verification rules', () => {
+  const actor = initialUsers.find((user) => user.id === 'user_admin_1')!;
+  const target = initialUsers.find((user) => user.id === 'user_company_2')!;
+  const profile = initialCompanyProfiles.find((item) => item.userId === target.id)!;
+  const result = approveUserVerification(actor, target, profile);
+
+  assert.equal(result.entity.user.status, 'ACTIVE');
+  assert.equal(result.entity.user.isVerified, true);
+  assert.equal(result.entity.companyProfile?.verificationStatus, 'VERIFIED');
+  assert.equal(result.events[0].type, 'verification.approved');
+  assert.equal(result.auditLogs[0].decision, 'ALLOW');
+});
+
+test('admin warnings create trust-impacting student evidence', () => {
+  const actor = initialUsers.find((user) => user.id === 'user_admin_1')!;
+  const result = issueStudentWarning(actor, state, {
+    studentId: 'user_student_1',
+    reason: 'Missed a required evidence review without prior notice.'
+  });
+
+  assert.equal(result.entity.studentId, 'user_student_1');
+  assert.equal(result.events[0].type, 'warning.issued');
+  assert.ok(result.trustScores[0].evidence.some((item) => item.includes('administrative warnings')));
 });

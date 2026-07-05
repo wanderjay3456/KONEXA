@@ -272,3 +272,33 @@ test('notification API enforces ownership and records lifecycle actions', async 
     assert.ok(audit.body.some((item: { action: string; resourceId: string }) => item.action === 'notification.archived' && item.resourceId === notificationId));
   });
 });
+
+test('admin verification and warning APIs enforce trust operations', async () => {
+  await withApi(async (baseUrl) => {
+    const approved = await json(`${baseUrl}/api/admin/verifications/user_company_2/approve`, {
+      method: 'POST',
+      headers: { 'x-konexa-user-id': 'user_admin_1' }
+    });
+    assert.equal(approved.response.status, 200);
+    assert.equal(approved.body.user.status, 'ACTIVE');
+    assert.equal(approved.body.companyProfile.verificationStatus, 'VERIFIED');
+
+    const denied = await json(`${baseUrl}/api/admin/verifications/user_student_2/approve`, {
+      method: 'POST',
+      headers: { 'x-konexa-user-id': 'user_company_1' }
+    });
+    assert.equal(denied.response.status, 403);
+
+    const warning = await json(`${baseUrl}/api/admin/students/user_student_1/warnings`, {
+      method: 'POST',
+      headers: { 'x-konexa-user-id': 'user_admin_1' },
+      body: JSON.stringify({ reason: 'Missed a required evidence review without prior notice.' })
+    });
+    assert.equal(warning.response.status, 201);
+    assert.equal(warning.body.studentId, 'user_student_1');
+
+    const trustScore = await json(`${baseUrl}/api/trust-scores/STUDENT/user_student_1`);
+    assert.equal(trustScore.response.status, 200);
+    assert.ok(trustScore.body.evidence.some((item: string) => item.includes('administrative warnings')));
+  });
+});
