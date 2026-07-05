@@ -54,6 +54,10 @@ $env:KONEXA_SERVE_STATIC="true"
 npm start
 ```
 
+## Continuous Integration
+
+GitHub Actions runs typecheck, tests, and production build on pushes and pull requests to `main`.
+
 ## Production Notes
 
 See `docs/production-readiness.md` for domain rules, schema contracts, monitoring records, and the Supabase migration path.
