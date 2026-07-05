@@ -169,6 +169,12 @@ function requireActiveVerified(actor: Actor, action: AuditLog['action'], resourc
   }
 }
 
+function requireEditableAccount(actor: Actor, action: AuditLog['action'], resourceType: string, resourceId: string) {
+  if (['SUSPENDED', 'ARCHIVED'].includes(actor.status)) {
+    deny(actor, action, resourceType, resourceId, 'Suspended or archived accounts cannot update platform profiles.');
+  }
+}
+
 function requireRole(actor: Actor, roles: UserRole[], action: AuditLog['action'], resourceType: string, resourceId: string) {
   if (!roles.includes(actor.role)) {
     deny(actor, action, resourceType, resourceId, `Required role: ${roles.join(', ')}.`);
@@ -373,7 +379,7 @@ export function updateStudentProfile(
   current: StudentProfile,
   patch: Partial<StudentProfile>
 ): MutationResult<StudentProfile> {
-  requireActiveVerified(actor, 'student.updated', 'student_profile', current.userId);
+  requireEditableAccount(actor, 'student.updated', 'student_profile', current.userId);
   requireRole(actor, [UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN], 'student.updated', 'student_profile', current.userId);
   if (actor.role === UserRole.STUDENT && actor.id !== current.userId) {
     deny(actor, 'student.updated', 'student_profile', current.userId, 'Students can only update their own profile.');
@@ -400,7 +406,9 @@ export function updateStudentProfile(
   assertText(next.university, 'university', actor, 'student_profile');
   assertText(next.major, 'major', actor, 'student_profile');
   assertText(next.englishProficiency, 'englishProficiency', actor, 'student_profile');
-  if (!next.skills.length) deny(actor, 'validation.failed', 'student_profile', current.userId, 'At least one verified skill is required.');
+  if (actor.isVerified && actor.status === 'ACTIVE' && !next.skills.length) {
+    deny(actor, 'validation.failed', 'student_profile', current.userId, 'At least one verified skill is required.');
+  }
   assertOptionalUrl(next.avatarUrl, 'avatarUrl', actor);
   assertOptionalUrl(next.portfolioUrl, 'portfolioUrl', actor);
   assertOptionalUrl(next.githubUrl, 'githubUrl', actor);
@@ -440,7 +448,7 @@ export function updateCompanyProfile(
   current: CompanyProfile,
   patch: Partial<CompanyProfile>
 ): MutationResult<CompanyProfile> {
-  requireActiveVerified(actor, 'company.updated', 'company_profile', current.userId);
+  requireEditableAccount(actor, 'company.updated', 'company_profile', current.userId);
   requireRole(actor, [UserRole.COMPANY, UserRole.ADMIN, UserRole.SUPER_ADMIN], 'company.updated', 'company_profile', current.userId);
   if (actor.role === UserRole.COMPANY && actor.id !== current.userId) {
     deny(actor, 'company.updated', 'company_profile', current.userId, 'Companies can only update their own profile.');

@@ -161,6 +161,24 @@ test('student profile updates are versioned and invalidate AI context', () => {
   assert.equal(result.auditLogs[0].decision, 'ALLOW');
 });
 
+test('pending users can complete their own profiles before verification', () => {
+  const pendingStudent = initialUsers.find((user) => user.id === 'user_student_2')!;
+  const studentProfile = initialStudentProfiles.find((item) => item.userId === pendingStudent.id)!;
+  const studentResult = updateStudentProfile(pendingStudent, studentProfile, {
+    preferredRole: 'Product Designer',
+    biography: 'Pending student completing evidence profile before verification.'
+  });
+  assert.equal(studentResult.entity.profileVersion, 2);
+
+  const pendingCompany = initialUsers.find((user) => user.id === 'user_company_2')!;
+  const companyProfile = initialCompanyProfiles.find((item) => item.userId === pendingCompany.id)!;
+  const companyResult = updateCompanyProfile(pendingCompany, companyProfile, {
+    description: 'Pending company completing employer profile before verification.',
+    recruitmentStatus: 'PAUSED'
+  });
+  assert.equal(companyResult.entity.profileVersion, 2);
+});
+
 test('company profile updates are versioned and synchronized through events', () => {
   const actor = initialUsers.find((user) => user.id === 'user_company_1')!;
   const profile = initialCompanyProfiles.find((item) => item.userId === actor.id)!;

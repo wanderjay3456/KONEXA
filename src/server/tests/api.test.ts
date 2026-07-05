@@ -158,6 +158,17 @@ test('auth API registers and logs in student and company accounts', async () => 
       })
     });
     assert.equal(duplicate.response.status, 409);
+
+    const updatedPendingProfile = await json(`${baseUrl}/api/students/${registeredStudent.body.user.id}/profile`, {
+      method: 'PATCH',
+      headers: { 'x-konexa-user-id': registeredStudent.body.user.id },
+      body: JSON.stringify({
+        preferredRole: 'Software Engineer Intern',
+        biography: 'Completing profile while verification is pending.'
+      })
+    });
+    assert.equal(updatedPendingProfile.response.status, 200);
+    assert.equal(updatedPendingProfile.body.profileVersion, 2);
   });
 });
 
