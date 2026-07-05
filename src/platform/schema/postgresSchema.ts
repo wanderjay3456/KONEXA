@@ -280,6 +280,7 @@ create policy "users can read own profile versions" on profile_versions for sele
 export const restApiContract = [
   'POST /api/projects',
   'GET /api/projects',
+  'PATCH /api/projects/:projectId/status',
   'POST /api/projects/:projectId/applications',
   'PATCH /api/applications/:applicationId/status',
   'POST /api/projects/:projectId/submissions',

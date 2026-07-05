@@ -86,6 +86,14 @@ export function createRemoteProject(actorId: string, project: Omit<Project, 'id'
   });
 }
 
+export function updateRemoteProjectStatus(actorId: string, projectId: string, status: Project['status']) {
+  return request<Project>(`/api/projects/${projectId}/status`, {
+    method: 'PATCH',
+    headers: actorHeaders(actorId),
+    body: JSON.stringify({ status })
+  });
+}
+
 export function submitRemoteApplication(actorId: string, projectId: string, coverLetter: string, portfolioUrl?: string) {
   return request<import('../../types').Application>(`/api/projects/${projectId}/applications`, {
     method: 'POST',

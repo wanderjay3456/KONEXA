@@ -10,6 +10,7 @@ import {
   submitFinalEvaluation,
   submitWeeklyEvaluation,
   updateCompanyProfile,
+  updateProjectStatus,
   updateStudentProfile,
   updateApplicationStatus,
   type AuditLog,
@@ -562,6 +563,33 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
       }));
       metrics.writeCount += 1;
       res.status(201).json(result.entity);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch('/api/projects/:projectId/status', (req: RequestWithActor, res, next) => {
+    try {
+      const actor = requireActor(req, repository);
+      const body = asObject(req.body);
+      const project = repository.read().projects.find((item) => item.id === req.params.projectId);
+      if (!project) return res.status(404).json({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project does not exist.' } });
+      const result = updateProjectStatus(actor, project, readProjectStatus(body));
+
+      repository.update((current) => appendOperationalState({
+        ...current,
+        projects: current.projects.map((item) => item.id === project.id ? result.entity : item),
+        notifications: [
+          notification(project.companyId, 'Project Status Updated', `"${project.title}" is now ${result.entity.status}.`, result.entity.status === ProjectStatus.OPEN ? 'success' : 'info', { category: 'PROJECT', priority: result.entity.status === ProjectStatus.OPEN ? 'HIGH' : 'NORMAL' }),
+          ...current.notifications
+        ]
+      }, {
+        auditLogs: result.auditLogs,
+        domainEvents: result.events,
+        trustScores: result.trustScores
+      }));
+      metrics.writeCount += 1;
+      res.json(result.entity);
     } catch (error) {
       next(error);
     }

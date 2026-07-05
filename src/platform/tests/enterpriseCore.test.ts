@@ -9,6 +9,7 @@ import {
   submitFinalEvaluation,
   submitWeeklyEvaluation,
   updateCompanyProfile,
+  updateProjectStatus,
   updateStudentProfile
 } from '../domain/enterpriseCore';
 import { initialCompanyProfiles, initialProjects, initialStudentProfiles, initialUsers, initialApplications, initialSubmissions, initialEvaluations, initialCompanyEvaluations, initialStudentWarnings } from '../../mockData';
@@ -164,6 +165,21 @@ test('admins approve pending users through audited verification rules', () => {
   assert.equal(result.entity.companyProfile?.verificationStatus, 'VERIFIED');
   assert.equal(result.events[0].type, 'verification.approved');
   assert.equal(result.auditLogs[0].decision, 'ALLOW');
+});
+
+test('admins moderate project status through allowed transitions', () => {
+  const actor = initialUsers.find((user) => user.id === 'user_admin_1')!;
+  const pendingProject = { ...initialProjects[0], status: ProjectStatus.PENDING_APPROVAL };
+  const result = updateProjectStatus(actor, pendingProject, ProjectStatus.OPEN);
+
+  assert.equal(result.entity.status, ProjectStatus.OPEN);
+  assert.equal(result.events[0].type, 'project.status_changed');
+  assert.equal(result.auditLogs[0].decision, 'ALLOW');
+
+  assert.throws(
+    () => updateProjectStatus(actor, result.entity, ProjectStatus.COMPLETED),
+    DomainRuleError
+  );
 });
 
 test('admin warnings create trust-impacting student evidence', () => {

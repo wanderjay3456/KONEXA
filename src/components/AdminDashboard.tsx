@@ -117,7 +117,6 @@ interface AdminDashboardProps {
   allApplications: Application[];
   allSubmissions: WeeklySubmission[];
   allEvaluations: WeeklyEvaluation[];
-  setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
   setStudentProfiles: React.Dispatch<React.SetStateAction<StudentProfile[]>>;
   setCompanyProfiles: React.Dispatch<React.SetStateAction<CompanyProfile[]>>;
@@ -125,6 +124,7 @@ interface AdminDashboardProps {
   onIssueWarning: (studentId: string, reason: string) => void;
   onApproveStudent: (studentId: string) => void;
   onApproveCompany: (companyId: string) => void;
+  onUpdateProjectStatus: (projectId: string, status: ProjectStatus) => void;
   onLogout: () => void;
 }
 
@@ -178,7 +178,6 @@ export default function AdminDashboard({
   allApplications,
   allSubmissions,
   allEvaluations,
-  setProjects,
   setUsers,
   setStudentProfiles,
   setCompanyProfiles,
@@ -186,6 +185,7 @@ export default function AdminDashboard({
   onIssueWarning,
   onApproveStudent,
   onApproveCompany,
+  onUpdateProjectStatus,
   onLogout
 }: AdminDashboardProps) {
   // Navigation & Simulation State
@@ -344,7 +344,7 @@ export default function AdminDashboard({
   };
 
   const handleProjectStatusChange = (projectId: string, currentStatus: ProjectStatus, nextStatus: ProjectStatus) => {
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: nextStatus } : p));
+    onUpdateProjectStatus(projectId, nextStatus);
     const proj = allProjects.find(p => p.id === projectId);
     addAuditLog('MODERATE_PROJECT_STATUS', `${proj?.title || projectId} (PROJECT)`, `Status: ${currentStatus}`, `Status: ${nextStatus}`);
   };

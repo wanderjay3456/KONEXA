@@ -302,3 +302,43 @@ test('admin verification and warning APIs enforce trust operations', async () =>
     assert.ok(trustScore.body.evidence.some((item: string) => item.includes('administrative warnings')));
   });
 });
+
+test('admin project moderation API opens pending projects with audit evidence', async () => {
+  await withApi(async (baseUrl) => {
+    const created = await json(`${baseUrl}/api/projects`, {
+      method: 'POST',
+      headers: { 'x-konexa-user-id': 'user_company_1' },
+      body: JSON.stringify({
+        title: 'Healthcare Localization Evidence Sprint',
+        description: 'Create a transparent localization evidence package for Korean healthcare AI onboarding.',
+        expectedOutcome: 'A bilingual evidence matrix and implementation recommendation.',
+        durationWeeks: 3,
+        compensation: '$650 USD',
+        requiredSkills: ['Research', 'Healthcare AI'],
+        weeklyHours: 10,
+        status: 'DRAFT',
+        milestones: [{ week: 1, goal: 'Evidence map', deliverableDescription: 'Reviewed source matrix' }]
+      })
+    });
+    assert.equal(created.response.status, 201);
+    assert.equal(created.body.status, 'PENDING_APPROVAL');
+
+    const opened = await json(`${baseUrl}/api/projects/${created.body.id}/status`, {
+      method: 'PATCH',
+      headers: { 'x-konexa-user-id': 'user_admin_1' },
+      body: JSON.stringify({ status: 'OPEN' })
+    });
+    assert.equal(opened.response.status, 200);
+    assert.equal(opened.body.status, 'OPEN');
+
+    const invalid = await json(`${baseUrl}/api/projects/${created.body.id}/status`, {
+      method: 'PATCH',
+      headers: { 'x-konexa-user-id': 'user_admin_1' },
+      body: JSON.stringify({ status: 'COMPLETED' })
+    });
+    assert.equal(invalid.response.status, 403);
+
+    const audit = await json(`${baseUrl}/api/audit-logs`);
+    assert.ok(audit.body.some((item: { action: string; resourceId: string }) => item.action === 'project.status_changed' && item.resourceId === created.body.id));
+  });
+});

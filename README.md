@@ -71,6 +71,7 @@ See `docs/production-readiness.md` for domain rules, schema contracts, monitorin
 - `GET /api/state`
 - `GET /api/projects`
 - `POST /api/projects`
+- `PATCH /api/projects/:projectId/status`
 - `POST /api/projects/:projectId/applications`
 - `PATCH /api/applications/:applicationId/status`
 - `POST /api/projects/:projectId/submissions`

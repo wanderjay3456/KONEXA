@@ -48,6 +48,7 @@ test('typescript schema contract stays synchronized with migration table coverag
 
 test('REST contract includes core project-first hiring endpoints', () => {
   assert.ok(restApiContract.includes('POST /api/projects'));
+  assert.ok(restApiContract.includes('PATCH /api/projects/:projectId/status'));
   assert.ok(restApiContract.includes('POST /api/projects/:projectId/applications'));
   assert.ok(restApiContract.includes('POST /api/submissions/:submissionId/evaluations'));
   assert.ok(restApiContract.includes('GET /api/trust-scores/:entityType/:entityId'));

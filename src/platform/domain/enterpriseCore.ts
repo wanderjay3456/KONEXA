@@ -22,6 +22,7 @@ export type DomainEventType =
   | 'application.submitted'
   | 'application.status_changed'
   | 'project.created'
+  | 'project.status_changed'
   | 'project.completed'
   | 'submission.created'
   | 'evaluation.weekly_created'
@@ -431,6 +432,39 @@ export function createProject(
     entity,
     events: [event('project.created', actor, entity.id, { companyId: actor.id, status: entity.status })],
     auditLogs: [audit(actor, 'project.created', 'project', entity.id, 'ALLOW', 'Company created a project with transparent deliverables.')],
+    trustScores: []
+  };
+}
+
+export function updateProjectStatus(
+  actor: Actor,
+  project: Project,
+  status: ProjectStatus
+): MutationResult<Project> {
+  requireActiveVerified(actor, 'project.status_changed', 'project', project.id);
+  requireRole(actor, [UserRole.ADMIN, UserRole.SUPER_ADMIN], 'project.status_changed', 'project', project.id);
+
+  const allowedTransitions: Record<ProjectStatus, ProjectStatus[]> = {
+    [ProjectStatus.DRAFT]: [ProjectStatus.PENDING_APPROVAL, ProjectStatus.CANCELLED],
+    [ProjectStatus.PENDING_APPROVAL]: [ProjectStatus.OPEN, ProjectStatus.CANCELLED],
+    [ProjectStatus.OPEN]: [ProjectStatus.CLOSED, ProjectStatus.CANCELLED],
+    [ProjectStatus.MATCHED]: [ProjectStatus.RUNNING, ProjectStatus.CANCELLED],
+    [ProjectStatus.RUNNING]: [ProjectStatus.PAUSED, ProjectStatus.COMPLETED, ProjectStatus.CANCELLED],
+    [ProjectStatus.PAUSED]: [ProjectStatus.RUNNING, ProjectStatus.CANCELLED],
+    [ProjectStatus.COMPLETED]: [],
+    [ProjectStatus.CLOSED]: [],
+    [ProjectStatus.CANCELLED]: []
+  };
+
+  if (!allowedTransitions[project.status].includes(status)) {
+    deny(actor, 'project.status_changed', 'project', project.id, `Project status cannot move from ${project.status} to ${status}.`);
+  }
+
+  const entity = { ...project, status };
+  return {
+    entity,
+    events: [event('project.status_changed', actor, project.id, { previousStatus: project.status, status })],
+    auditLogs: [audit(actor, 'project.status_changed', 'project', project.id, 'ALLOW', 'Project moderation status changed through verified admin workflow.')],
     trustScores: []
   };
 }

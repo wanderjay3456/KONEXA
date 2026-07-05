@@ -29,6 +29,7 @@ import {
   submitFinalEvaluation,
   submitWeeklyEvaluation,
   updateApplicationStatus,
+  updateProjectStatus,
   type PlatformState
 } from './platform/domain/enterpriseCore';
 import { appendOperationalRecords, recordDeniedAction } from './platform/services/operationalStore';
@@ -46,6 +47,7 @@ import {
   submitRemoteWeeklyEvaluation,
   updateRemoteNotificationLifecycle,
   updateRemoteCompanyProfile,
+  updateRemoteProjectStatus,
   updateRemoteStudentProfile,
   updateRemoteApplicationStatus,
   type RemotePlatformState
@@ -399,6 +401,43 @@ export default function App() {
         createdAt: new Date().toISOString()
       };
       setNotifications(prevN => [newNotif, ...prevN]);
+    } catch (error) {
+      reportDomainError(error);
+    }
+  };
+
+  const handleUpdateProjectStatus = async (projectId: string, status: ProjectStatus) => {
+    if (!currentUser) return;
+    if (shouldUseRemoteApi()) {
+      try {
+        await updateRemoteProjectStatus(currentUser.id, projectId, status);
+        await refreshRemoteState();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
+    const project = projects.find(item => item.id === projectId);
+    if (!project) return;
+    try {
+      const result = updateProjectStatus(currentUser, project, status);
+      setProjects(prev => prev.map(item => item.id === projectId ? result.entity : item));
+      appendOperationalRecords({ auditLogs: result.auditLogs, domainEvents: result.events, trustScores: result.trustScores });
+
+      const newNotif: Notification = {
+        id: `notif_${Date.now()}`,
+        userId: project.companyId,
+        title: 'Project Status Updated',
+        message: `"${project.title}" is now ${status}.`,
+        type: status === ProjectStatus.OPEN ? 'success' : 'info',
+        priority: status === ProjectStatus.OPEN ? 'HIGH' : 'NORMAL',
+        category: 'PROJECT',
+        channels: ['IN_APP'],
+        isRead: false,
+        createdAt: new Date().toISOString()
+      };
+      setNotifications(prev => [newNotif, ...prev]);
     } catch (error) {
       reportDomainError(error);
     }
@@ -842,7 +881,6 @@ export default function App() {
               allApplications={applications}
               allSubmissions={submissions}
               allEvaluations={evaluations}
-              setProjects={setProjects}
               setUsers={setUsers}
               setStudentProfiles={setStudentProfiles}
               setCompanyProfiles={setCompanyProfiles}
@@ -850,6 +888,7 @@ export default function App() {
               onIssueWarning={handleIssueWarning}
               onApproveStudent={handleApproveStudent}
               onApproveCompany={handleApproveCompany}
+              onUpdateProjectStatus={handleUpdateProjectStatus}
               onLogout={handleLogout}
             />
           )}
