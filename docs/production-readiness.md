@@ -6,6 +6,7 @@ KONEXA is implemented as a project-first hiring operating system. The current de
 
 - Business rules live in `src/platform/domain/enterpriseCore.ts`.
 - PostgreSQL/Supabase schema and REST contract live in `src/platform/schema/postgresSchema.ts`.
+- Supabase migrations live in `supabase/migrations/`.
 - Browser-backed operational persistence for audit logs, domain events, trust scores, and monitoring metrics lives in `src/platform/services/operationalStore.ts`.
 - Production API routes live in `src/server/app.ts`.
 - File-backed server persistence lives in `src/server/repository.ts` and is configured by `KONEXA_DATA_FILE`.
@@ -43,4 +44,4 @@ The API exposes health, metrics, state read models, project creation, applicatio
 
 ## Supabase Migration Path
 
-The app currently runs fully in the browser for deployability. To connect Supabase, run the SQL exported by `konexaPostgresSchema`, then persist the domain outputs from `enterpriseCore.ts` to `audit_logs`, `domain_events`, and `trust_scores` in the same transaction as each aggregate write.
+The app can run with the local file-backed API while Supabase is provisioned. For database deployment, apply `supabase/migrations/202607050001_initial_konexa_platform.sql`, then persist the domain outputs from `enterpriseCore.ts` to `audit_logs`, `domain_events`, and `trust_scores` in the same transaction as each aggregate write.

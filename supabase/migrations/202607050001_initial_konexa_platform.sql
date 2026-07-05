@@ -1,11 +1,24 @@
-export const konexaPostgresSchema = `
 create extension if not exists pgcrypto;
 
-create type user_role as enum ('STUDENT', 'COMPANY', 'ADMIN', 'SUPER_ADMIN');
-create type user_status as enum ('PENDING', 'VERIFIED', 'ACTIVE', 'SUSPENDED', 'ARCHIVED');
-create type project_status as enum ('DRAFT', 'PENDING_APPROVAL', 'OPEN', 'MATCHED', 'RUNNING', 'PAUSED', 'COMPLETED', 'CLOSED', 'CANCELLED');
-create type application_status as enum ('SUBMITTED', 'UNDER_REVIEW', 'SHORTLISTED', 'ACCEPTED', 'REJECTED', 'WITHDRAWN');
-create type hiring_decision as enum ('HIRE', 'TALENT_POOL', 'REJECT', 'FUTURE_CONTACT', 'PENDING');
+do $$ begin
+  create type user_role as enum ('STUDENT', 'COMPANY', 'ADMIN', 'SUPER_ADMIN');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type user_status as enum ('PENDING', 'VERIFIED', 'ACTIVE', 'SUSPENDED', 'ARCHIVED');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type project_status as enum ('DRAFT', 'PENDING_APPROVAL', 'OPEN', 'MATCHED', 'RUNNING', 'PAUSED', 'COMPLETED', 'CLOSED', 'CANCELLED');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type application_status as enum ('SUBMITTED', 'UNDER_REVIEW', 'SHORTLISTED', 'ACCEPTED', 'REJECTED', 'WITHDRAWN');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type hiring_decision as enum ('HIRE', 'TALENT_POOL', 'REJECT', 'FUTURE_CONTACT', 'PENDING');
+exception when duplicate_object then null; end $$;
 
 create table if not exists users (
   id text primary key default gen_random_uuid()::text,
@@ -226,18 +239,3 @@ create policy "students can read own submissions" on weekly_submissions for sele
 create policy "students can read own evaluations" on weekly_evaluations for select using (auth.uid()::text = student_id);
 create policy "users can read own notifications" on notifications for select using (auth.uid()::text = user_id);
 create policy "users can read own trust scores" on trust_scores for select using (auth.uid()::text = entity_id);
-`;
-
-export const restApiContract = [
-  'POST /api/projects',
-  'GET /api/projects',
-  'POST /api/projects/:projectId/applications',
-  'PATCH /api/applications/:applicationId/status',
-  'POST /api/projects/:projectId/submissions',
-  'POST /api/submissions/:submissionId/evaluations',
-  'POST /api/projects/:projectId/final-evaluations',
-  'POST /api/admin/verifications/:userId/approve',
-  'POST /api/admin/students/:studentId/warnings',
-  'GET /api/audit-logs',
-  'GET /api/trust-scores/:entityType/:entityId'
-] as const;
