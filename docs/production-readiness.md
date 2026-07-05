@@ -1,6 +1,6 @@
 # KONEXA Production Readiness Notes
 
-KONEXA is implemented as a project-first hiring operating system. The current deployable app preserves the existing React workspaces and adds an enterprise domain layer for project applications, company project creation, weekly evaluations, final hiring decisions, audit logging, domain events, and trust scoring.
+KONEXA is implemented as a project-first hiring operating system. The current deployable app preserves the existing React workspaces and adds an enterprise domain layer for project applications, company project creation, weekly evaluations, final hiring decisions, profile synchronization, notification lifecycle management, audit logging, domain events, and trust scoring.
 
 ## Implemented Operating Contracts
 
@@ -10,6 +10,7 @@ KONEXA is implemented as a project-first hiring operating system. The current de
 - Browser-backed operational persistence for audit logs, domain events, trust scores, and monitoring metrics lives in `src/platform/services/operationalStore.ts`.
 - Production API routes live in `src/server/app.ts`.
 - File-backed server persistence lives in `src/server/repository.ts` and is configured by `KONEXA_DATA_FILE`.
+- Notifications are actor-scoped and support category, priority, read status, archive, dismiss, and audit-backed lifecycle events.
 - Domain tests live in `src/platform/tests/enterpriseCore.test.ts`.
 - API integration tests live in `src/server/tests/api.test.ts`.
 - Admin architecture workspaces are lazy loaded to reduce initial production bundle size.
@@ -42,10 +43,10 @@ For single-process deployment, build the frontend and run `npm start` with `KONE
 
 ## Operational API
 
-The API exposes health, metrics, state read models, project creation, applications, weekly submissions, weekly evaluations, final hiring decisions, audit logs, and trust score read models. Write operations require `x-konexa-user-id` and are rejected if the actor is not permitted by the domain rules.
+The API exposes health, metrics, state read models, project creation, applications, weekly submissions, weekly evaluations, final hiring decisions, profile updates, notification lifecycle actions, audit logs, and trust score read models. Actor-scoped operations require `x-konexa-user-id` and are rejected if the actor is not permitted by the domain rules.
 
 When `KONEXA_API_KEY` is configured, every endpoint except `GET /api/health` requires `x-konexa-api-key`. Responses include request IDs and browser security headers.
 
 ## Supabase Migration Path
 
-The app can run with the local file-backed API while Supabase is provisioned. For database deployment, apply `supabase/migrations/202607050001_initial_konexa_platform.sql`, then persist the domain outputs from `enterpriseCore.ts` to `audit_logs`, `domain_events`, and `trust_scores` in the same transaction as each aggregate write.
+The app can run with the local file-backed API while Supabase is provisioned. For database deployment, apply all migrations in `supabase/migrations/` in timestamp order, then persist the domain outputs from `enterpriseCore.ts` to `audit_logs`, `domain_events`, and `trust_scores` in the same transaction as each aggregate write.

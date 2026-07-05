@@ -318,7 +318,11 @@ export const initialNotifications: Notification[] = [
     title: 'Verification Approved',
     message: 'Welcome to KONEXA! Your RMIT student profile has been approved by the platform admins. You are now verified to search and apply for premium SME projects.',
     type: 'success',
+    priority: 'NORMAL',
+    category: 'TRUST',
+    channels: ['IN_APP'],
     isRead: true,
+    readAt: '2026-06-05T09:15:00Z',
     createdAt: '2026-06-05T09:00:00Z'
   },
   {
@@ -327,6 +331,9 @@ export const initialNotifications: Notification[] = [
     title: 'Project Application Accepted',
     message: 'Congratulations! VUNO AI Solutions accepted your application for Southeast Asia Localization Project. Please check your Project Dashboard.',
     type: 'success',
+    priority: 'HIGH',
+    category: 'APPLICATION',
+    channels: ['IN_APP', 'EMAIL'],
     isRead: false,
     createdAt: '2026-06-12T14:00:00Z'
   },
@@ -336,6 +343,9 @@ export const initialNotifications: Notification[] = [
     title: 'New Project Applicant',
     message: 'Tran Duc Huy (RMIT University Vietnam) has applied for your API SDK Documentation project.',
     type: 'info',
+    priority: 'HIGH',
+    category: 'APPLICATION',
+    channels: ['IN_APP'],
     isRead: false,
     createdAt: '2026-07-03T10:00:00Z'
   }

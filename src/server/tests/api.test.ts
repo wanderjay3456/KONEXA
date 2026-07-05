@@ -236,3 +236,39 @@ test('profile update API versions company profile and propagates project brandin
     assert.ok(projects.body.some((item: { companyName: string }) => item.companyName === 'VUNO Global AI'));
   });
 });
+
+test('notification API enforces ownership and records lifecycle actions', async () => {
+  await withApi(async (baseUrl) => {
+    const listed = await json(`${baseUrl}/api/notifications?limit=10`, {
+      headers: { 'x-konexa-user-id': 'user_student_1' }
+    });
+    assert.equal(listed.response.status, 200);
+    assert.ok(listed.body.items.length >= 1);
+    assert.ok(listed.body.items.every((item: { userId: string }) => item.userId === 'user_student_1'));
+
+    const notificationId = listed.body.items.find((item: { isRead: boolean }) => !item.isRead)?.id ?? listed.body.items[0].id;
+    const read = await json(`${baseUrl}/api/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+      headers: { 'x-konexa-user-id': 'user_student_1' }
+    });
+    assert.equal(read.response.status, 200);
+    assert.equal(read.body.isRead, true);
+    assert.ok(read.body.readAt);
+
+    const denied = await json(`${baseUrl}/api/notifications/${notificationId}/archive`, {
+      method: 'PATCH',
+      headers: { 'x-konexa-user-id': 'user_student_2' }
+    });
+    assert.equal(denied.response.status, 404);
+
+    const archived = await json(`${baseUrl}/api/notifications/${notificationId}/archive`, {
+      method: 'PATCH',
+      headers: { 'x-konexa-user-id': 'user_student_1' }
+    });
+    assert.equal(archived.response.status, 200);
+    assert.ok(archived.body.archivedAt);
+
+    const audit = await json(`${baseUrl}/api/audit-logs`);
+    assert.ok(audit.body.some((item: { action: string; resourceId: string }) => item.action === 'notification.archived' && item.resourceId === notificationId));
+  });
+});

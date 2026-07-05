@@ -220,7 +220,14 @@ export interface Notification {
   title: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
+  priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
+  category?: 'PROJECT' | 'APPLICATION' | 'MATCHING' | 'FEEDBACK' | 'REMINDER' | 'SYSTEM' | 'AI' | 'TRUST' | 'PERFORMANCE';
+  channels?: ('IN_APP' | 'EMAIL')[];
   isRead: boolean;
+  readAt?: string;
+  archivedAt?: string;
+  dismissedAt?: string;
+  scheduledFor?: string;
   createdAt: string;
 }
 

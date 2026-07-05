@@ -32,7 +32,10 @@ export type DomainEventType =
   | 'student.updated'
   | 'company.updated'
   | 'ai.context_invalidated'
-  | 'notification.created';
+  | 'notification.created'
+  | 'notification.read'
+  | 'notification.archived'
+  | 'notification.dismissed';
 
 export interface DomainEvent<TPayload = Record<string, unknown>> {
   id: string;

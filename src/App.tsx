@@ -19,7 +19,7 @@ import {
 } from './types';
 import LandingPage from './components/LandingPage';
 import AuthModule from './components/AuthModule';
-import { Info, Sparkles, RefreshCw, Layers } from 'lucide-react';
+import { Archive, Bell, CheckCheck, Info, Sparkles, RefreshCw, Layers, X } from 'lucide-react';
 import {
   createProject,
   DomainRuleError,
@@ -33,11 +33,14 @@ import { appendOperationalRecords, recordDeniedAction } from './platform/service
 import {
   createRemoteProject,
   getRemotePlatformState,
+  getRemoteNotifications,
   isKonexaApiEnabled,
+  markAllRemoteNotificationsRead,
   submitRemoteApplication,
   submitRemoteFinalEvaluation,
   submitRemoteWeeklyDeliverable,
   submitRemoteWeeklyEvaluation,
+  updateRemoteNotificationLifecycle,
   updateRemoteCompanyProfile,
   updateRemoteStudentProfile,
   updateRemoteApplicationStatus,
@@ -66,6 +69,7 @@ export default function App() {
   const [companyEvaluations, setCompanyEvaluations] = useState<CompanyEvaluation[]>([]);
   const [warnings, setWarnings] = useState<StudentWarning[]>([]);
   const [isRemoteState, setIsRemoteState] = useState(false);
+  const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
 
   // Authenticated User Session state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -102,6 +106,9 @@ export default function App() {
         title: 'KONEXA API Action Failed',
         message,
         type: 'error',
+        priority: 'HIGH',
+        category: 'SYSTEM',
+        channels: ['IN_APP'],
         isRead: false,
         createdAt: new Date().toISOString()
       };
@@ -187,6 +194,9 @@ export default function App() {
         title: 'Action Blocked by KONEXA Rules',
         message: error.message,
         type: 'warning',
+        priority: 'HIGH',
+        category: 'SYSTEM',
+        channels: ['IN_APP'],
         isRead: false,
         createdAt: new Date().toISOString()
       };
@@ -539,6 +549,64 @@ export default function App() {
     setNotifications(prev => [newNotif, ...prev]);
   };
 
+  const visibleNotifications = currentUser
+    ? notifications
+        .filter(item => item.userId === currentUser.id && !item.archivedAt && !item.dismissedAt)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    : [];
+  const unreadCount = visibleNotifications.filter(item => !item.isRead).length;
+
+  const syncNotificationsOnly = async () => {
+    if (!currentUser || !shouldUseRemoteApi()) return;
+    const response = await getRemoteNotifications(currentUser.id, { limit: 100 });
+    setNotifications(prev => [
+      ...response.items,
+      ...prev.filter(item => item.userId !== currentUser.id)
+    ]);
+  };
+
+  const patchNotificationLocal = (notificationId: string, patch: Partial<Notification>) => {
+    setNotifications(prev => prev.map(item => item.id === notificationId ? { ...item, ...patch } : item));
+  };
+
+  const handleNotificationAction = async (notificationId: string, action: 'read' | 'archive' | 'dismiss') => {
+    const now = new Date().toISOString();
+    const localPatch: Partial<Notification> = action === 'read'
+      ? { isRead: true, readAt: now }
+      : action === 'archive'
+        ? { isRead: true, readAt: now, archivedAt: now }
+        : { isRead: true, readAt: now, dismissedAt: now };
+
+    if (currentUser && shouldUseRemoteApi()) {
+      try {
+        const updated = await updateRemoteNotificationLifecycle(currentUser.id, notificationId, action);
+        patchNotificationLocal(notificationId, updated);
+        await syncNotificationsOnly();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
+    patchNotificationLocal(notificationId, localPatch);
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!currentUser) return;
+    const now = new Date().toISOString();
+    if (shouldUseRemoteApi()) {
+      try {
+        await markAllRemoteNotificationsRead(currentUser.id);
+        await syncNotificationsOnly();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
+    setNotifications(prev => prev.map(item => item.userId === currentUser.id && !item.archivedAt && !item.dismissedAt ? { ...item, isRead: true, readAt: now } : item));
+  };
+
   return (
     <div className="bg-neutral-950 text-white min-h-screen">
       
@@ -550,6 +618,75 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-4">
+          {currentUser && (
+            <div className="relative">
+              <button
+                onClick={() => setIsNotificationCenterOpen(prev => !prev)}
+                className="relative inline-flex items-center justify-center rounded-full border border-neutral-800 bg-neutral-950/80 p-2 text-neutral-300 shadow-sm transition-colors hover:border-neutral-700 hover:text-white"
+                aria-label="Open notification center"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-emerald-400 px-1 text-[9px] font-bold leading-4 text-neutral-950">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {isNotificationCenterOpen && (
+                <div className="absolute right-0 top-10 w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950 shadow-2xl shadow-black/40">
+                  <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+                    <div>
+                      <p className="text-xs font-semibold text-white">Notifications</p>
+                      <p className="text-[10px] text-neutral-500">{unreadCount} unread updates</p>
+                    </div>
+                    <button
+                      onClick={handleMarkAllNotificationsRead}
+                      className="inline-flex items-center gap-1 rounded-md border border-neutral-800 px-2 py-1 text-[10px] text-neutral-300 transition-colors hover:border-neutral-700 hover:text-white"
+                    >
+                      <CheckCheck className="h-3 w-3" /> Read all
+                    </button>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto">
+                    {visibleNotifications.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-xs text-neutral-500">No active notifications.</div>
+                    ) : visibleNotifications.slice(0, 8).map(item => (
+                      <div key={item.id} className="border-b border-neutral-900 px-4 py-3 last:border-b-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              {!item.isRead && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
+                              <p className="truncate text-xs font-semibold text-white">{item.title}</p>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-neutral-400">{item.message}</p>
+                            <div className="mt-2 flex items-center gap-2 text-[9px] uppercase tracking-wide text-neutral-600">
+                              <span>{item.category ?? 'SYSTEM'}</span>
+                              <span>{item.priority ?? 'NORMAL'}</span>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {!item.isRead && (
+                              <button onClick={() => handleNotificationAction(item.id, 'read')} className="rounded p-1 text-neutral-500 hover:bg-neutral-900 hover:text-white" aria-label="Mark notification read">
+                                <CheckCheck className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            <button onClick={() => handleNotificationAction(item.id, 'archive')} className="rounded p-1 text-neutral-500 hover:bg-neutral-900 hover:text-white" aria-label="Archive notification">
+                              <Archive className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => handleNotificationAction(item.id, 'dismiss')} className="rounded p-1 text-neutral-500 hover:bg-neutral-900 hover:text-white" aria-label="Dismiss notification">
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <button 
             onClick={() => { setView('LANDING'); setCurrentUser(null); }} 
             className="hover:text-white transition-colors"

@@ -9,7 +9,9 @@ import {
   submitWeeklyEvaluation,
   updateCompanyProfile,
   updateStudentProfile,
-  updateApplicationStatus
+  updateApplicationStatus,
+  type AuditLog,
+  type DomainEvent
 } from '../platform/domain/enterpriseCore';
 import { ApplicationStatus, CompanyProfile, Notification, ProjectStatus, StudentProfile, User } from '../types';
 import { ServerConfig } from './config';
@@ -47,15 +49,63 @@ const metrics: ApiMetrics = {
   writeCount: 0
 };
 
-const notification = (userId: string, title: string, message: string, type: Notification['type']): Notification => ({
+const notification = (
+  userId: string,
+  title: string,
+  message: string,
+  type: Notification['type'],
+  options: Pick<Notification, 'priority' | 'category' | 'channels' | 'scheduledFor'> = {}
+): Notification => ({
   id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
   userId,
   title,
   message,
   type,
+  priority: options.priority ?? 'NORMAL',
+  category: options.category ?? 'SYSTEM',
+  channels: options.channels ?? ['IN_APP'],
+  scheduledFor: options.scheduledFor,
   isRead: false,
   createdAt: new Date().toISOString()
 });
+
+function notificationAudit(actor: User, action: AuditLog['action'], notificationItem: Notification, reason: string): AuditLog {
+  return {
+    id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    actorId: actor.id,
+    actorRole: actor.role,
+    action,
+    resourceType: 'NOTIFICATION',
+    resourceId: notificationItem.id,
+    decision: 'ALLOW',
+    reason,
+    metadata: {
+      notificationUserId: notificationItem.userId,
+      category: notificationItem.category ?? 'SYSTEM',
+      priority: notificationItem.priority ?? 'NORMAL'
+    },
+    createdAt: new Date().toISOString()
+  };
+}
+
+function notificationEvent(actor: User, type: DomainEvent['type'], notificationItem: Notification): DomainEvent {
+  return {
+    id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    actorId: actor.id,
+    aggregateId: notificationItem.id,
+    payload: {
+      userId: notificationItem.userId,
+      category: notificationItem.category ?? 'SYSTEM',
+      priority: notificationItem.priority ?? 'NORMAL'
+    },
+    occurredAt: new Date().toISOString()
+  };
+}
+
+function canAccessNotification(actor: User, notificationItem: Notification) {
+  return notificationItem.userId === actor.id || actor.role === 'ADMIN' || actor.role === 'SUPER_ADMIN';
+}
 
 function requireActor(req: RequestWithActor, repository: PlatformRepository) {
   const actorId = req.header('x-konexa-user-id');
@@ -218,6 +268,91 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
     res.json(score);
   });
 
+  app.get('/api/notifications', (req: RequestWithActor, res, next) => {
+    try {
+      const actor = requireActor(req, repository);
+      const limit = Math.min(Math.max(Number(req.query.limit ?? 50), 1), 100);
+      const offset = Math.max(Number(req.query.offset ?? 0), 0);
+      const unreadOnly = req.query.unread === 'true';
+      const includeArchived = req.query.includeArchived === 'true';
+      const includeDismissed = req.query.includeDismissed === 'true';
+      const category = typeof req.query.category === 'string' ? req.query.category : undefined;
+
+      const items = repository.read().notifications
+        .filter((item) => canAccessNotification(actor, item))
+        .filter((item) => !unreadOnly || !item.isRead)
+        .filter((item) => includeArchived || !item.archivedAt)
+        .filter((item) => includeDismissed || !item.dismissedAt)
+        .filter((item) => !category || item.category === category)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+      res.json({
+        items: items.slice(offset, offset + limit),
+        total: items.length,
+        limit,
+        offset,
+        unreadCount: items.filter((item) => !item.isRead).length
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch('/api/notifications/read-all', (req: RequestWithActor, res, next) => {
+    try {
+      const actor = requireActor(req, repository);
+      const now = new Date().toISOString();
+      const changed = repository.read().notifications.filter((item) => canAccessNotification(actor, item) && !item.isRead && !item.dismissedAt && !item.archivedAt);
+      repository.update((state) => appendOperationalState({
+        ...state,
+        notifications: state.notifications.map((item) => changed.some((changedItem) => changedItem.id === item.id) ? { ...item, isRead: true, readAt: now } : item)
+      }, {
+        auditLogs: changed.map((item) => notificationAudit(actor, 'notification.read', item, 'Notification marked as read.')),
+        domainEvents: changed.map((item) => notificationEvent(actor, 'notification.read', item))
+      }));
+      metrics.writeCount += 1;
+      res.json({ updated: changed.length });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch('/api/notifications/:notificationId/:action', (req: RequestWithActor, res, next) => {
+    try {
+      const actor = requireActor(req, repository);
+      const action = req.params.action;
+      if (!['read', 'archive', 'dismiss'].includes(action)) {
+        return res.status(404).json({ error: { code: 'NOTIFICATION_ACTION_NOT_FOUND', message: 'Notification action does not exist.' } });
+      }
+
+      const current = repository.read().notifications.find((item) => item.id === req.params.notificationId);
+      if (!current || !canAccessNotification(actor, current)) {
+        return res.status(404).json({ error: { code: 'NOTIFICATION_NOT_FOUND', message: 'Notification does not exist.' } });
+      }
+
+      const now = new Date().toISOString();
+      const patch: Partial<Notification> = action === 'read'
+        ? { isRead: true, readAt: current.readAt ?? now }
+        : action === 'archive'
+          ? { archivedAt: current.archivedAt ?? now, isRead: true, readAt: current.readAt ?? now }
+          : { dismissedAt: current.dismissedAt ?? now, isRead: true, readAt: current.readAt ?? now };
+      const nextNotification = { ...current, ...patch };
+      const eventType = action === 'read' ? 'notification.read' : action === 'archive' ? 'notification.archived' : 'notification.dismissed';
+
+      repository.update((state) => appendOperationalState({
+        ...state,
+        notifications: state.notifications.map((item) => item.id === current.id ? nextNotification : item)
+      }, {
+        auditLogs: [notificationAudit(actor, eventType, nextNotification, `Notification ${action} completed.`)],
+        domainEvents: [notificationEvent(actor, eventType, nextNotification)]
+      }));
+      metrics.writeCount += 1;
+      res.json(nextNotification);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.patch('/api/students/:studentId/profile', (req: RequestWithActor, res, next) => {
     try {
       const actor = requireActor(req, repository);
@@ -257,7 +392,7 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
         studentProfiles: state.studentProfiles.map((item) => item.userId === result.entity.userId ? result.entity : item),
         applications: state.applications.map((item) => item.studentId === result.entity.userId ? { ...item, studentName: result.entity.fullName, studentAvatar: result.entity.avatarUrl } : item),
         notifications: [
-          notification(result.entity.userId, 'Profile Updated', 'Your verified profile was synchronized across KONEXA AI and matching systems.', 'success'),
+          notification(result.entity.userId, 'Profile Updated', 'Your verified profile was synchronized across KONEXA AI and matching systems.', 'success', { category: 'AI', priority: 'NORMAL' }),
           ...state.notifications
         ]
       }, {
@@ -311,7 +446,7 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
           return project?.companyId === result.entity.userId ? { ...item, companyName: result.entity.companyName } : item;
         }),
         notifications: [
-          notification(result.entity.userId, 'Company Profile Updated', 'Your employer profile was synchronized across KONEXA AI and matching systems.', 'success'),
+          notification(result.entity.userId, 'Company Profile Updated', 'Your employer profile was synchronized across KONEXA AI and matching systems.', 'success', { category: 'AI', priority: 'NORMAL' }),
           ...state.notifications
         ]
       }, {
@@ -387,7 +522,7 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
         ...current,
         applications: [...current.applications, result.entity],
         notifications: project
-          ? [notification(project.companyId, 'New Project Applicant', `${result.entity.studentName} applied for ${result.entity.projectTitle}.`, 'info'), ...current.notifications]
+          ? [notification(project.companyId, 'New Project Applicant', `${result.entity.studentName} applied for ${result.entity.projectTitle}.`, 'info', { category: 'APPLICATION', priority: 'HIGH' }), ...current.notifications]
           : current.notifications
       }, {
         auditLogs: result.auditLogs,
@@ -418,7 +553,7 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
           ? current.projects.map((item) => item.id === application.projectId ? { ...item, status: ProjectStatus.RUNNING } : item)
           : current.projects,
         notifications: [
-          notification(application.studentId, 'Application Status Update', `Your application to "${application.projectTitle}" has been ${status.toLowerCase()}.`, status === ApplicationStatus.ACCEPTED ? 'success' : 'info'),
+          notification(application.studentId, 'Application Status Update', `Your application to "${application.projectTitle}" has been ${status.toLowerCase()}.`, status === ApplicationStatus.ACCEPTED ? 'success' : 'info', { category: 'APPLICATION', priority: status === ApplicationStatus.ACCEPTED ? 'HIGH' : 'NORMAL' }),
           ...current.notifications
         ]
       }, {
@@ -465,7 +600,7 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
       repository.update((current) => ({
         ...current,
         submissions: [...current.submissions, submission],
-        notifications: [notification(project.companyId, 'New Weekly Submission', `Week ${weekNumber} deliverable is ready for evaluation.`, 'info'), ...current.notifications]
+        notifications: [notification(project.companyId, 'New Weekly Submission', `Week ${weekNumber} deliverable is ready for evaluation.`, 'info', { category: 'PROJECT', priority: 'HIGH' }), ...current.notifications]
       }));
       metrics.writeCount += 1;
       res.status(201).json(submission);
@@ -499,7 +634,7 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
         ...current,
         evaluations: [...current.evaluations, result.entity],
         submissions: current.submissions.map((item) => item.id === submission.id ? { ...item, isEvaluated: true } : item),
-        notifications: [notification(submission.studentId, `Week ${submission.weekNumber} Evaluation Published`, 'Your project evidence has been evaluated.', 'success'), ...current.notifications]
+        notifications: [notification(submission.studentId, `Week ${submission.weekNumber} Evaluation Published`, 'Your project evidence has been evaluated.', 'success', { category: 'PERFORMANCE', priority: 'HIGH' }), ...current.notifications]
       }, {
         auditLogs: result.auditLogs,
         domainEvents: result.events,
@@ -527,7 +662,7 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
         ...current,
         finalEvaluations: [...current.finalEvaluations, result.entity],
         projects: current.projects.map((item) => item.id === req.params.projectId ? { ...item, status: ProjectStatus.COMPLETED } : item),
-        notifications: [notification(result.entity.studentId, 'Hiring Pipeline Choice Finalized', `Decision: ${result.entity.hiringDecision.replace('_', ' ')}`, 'success'), ...current.notifications]
+        notifications: [notification(result.entity.studentId, 'Hiring Pipeline Choice Finalized', `Decision: ${result.entity.hiringDecision.replace('_', ' ')}`, 'success', { category: 'APPLICATION', priority: 'CRITICAL', channels: ['IN_APP', 'EMAIL'] }), ...current.notifications]
       }, {
         auditLogs: result.auditLogs,
         domainEvents: result.events,

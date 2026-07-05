@@ -153,3 +153,31 @@ export function updateRemoteCompanyProfile(actorId: string, companyId: string, p
     body: JSON.stringify(patch)
   });
 }
+
+export function getRemoteNotifications(
+  actorId: string,
+  filters: { unread?: boolean; includeArchived?: boolean; includeDismissed?: boolean; category?: Notification['category']; limit?: number; offset?: number } = {}
+) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined) params.set(key, String(value));
+  });
+  const query = params.toString();
+  return request<{ items: Notification[]; total: number; limit: number; offset: number; unreadCount: number }>(`/api/notifications${query ? `?${query}` : ''}`, {
+    headers: actorHeaders(actorId)
+  });
+}
+
+export function updateRemoteNotificationLifecycle(actorId: string, notificationId: string, action: 'read' | 'archive' | 'dismiss') {
+  return request<Notification>(`/api/notifications/${notificationId}/${action}`, {
+    method: 'PATCH',
+    headers: actorHeaders(actorId)
+  });
+}
+
+export function markAllRemoteNotificationsRead(actorId: string) {
+  return request<{ updated: number }>('/api/notifications/read-all', {
+    method: 'PATCH',
+    headers: actorHeaders(actorId)
+  });
+}

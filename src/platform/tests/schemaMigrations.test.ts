@@ -27,7 +27,8 @@ const requiredTables = [
 test('initial migration contains every production table and RLS activation', () => {
   const sql = [
     fs.readFileSync(migrationPath, 'utf8'),
-    fs.readFileSync(path.resolve('supabase/migrations/202607050002_profile_management_sync.sql'), 'utf8')
+    fs.readFileSync(path.resolve('supabase/migrations/202607050002_profile_management_sync.sql'), 'utf8'),
+    fs.readFileSync(path.resolve('supabase/migrations/202607050003_notification_management.sql'), 'utf8')
   ].join('\n');
 
   for (const table of requiredTables) {
@@ -52,4 +53,7 @@ test('REST contract includes core project-first hiring endpoints', () => {
   assert.ok(restApiContract.includes('GET /api/trust-scores/:entityType/:entityId'));
   assert.ok(restApiContract.includes('PATCH /api/students/:studentId/profile'));
   assert.ok(restApiContract.includes('PATCH /api/companies/:companyId/profile'));
+  assert.ok(restApiContract.includes('GET /api/notifications'));
+  assert.ok(restApiContract.includes('PATCH /api/notifications/:notificationId/:action'));
+  assert.ok(restApiContract.includes('PATCH /api/notifications/read-all'));
 });

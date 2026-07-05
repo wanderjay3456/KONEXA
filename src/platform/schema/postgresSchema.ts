@@ -178,7 +178,14 @@ create table if not exists notifications (
   title text not null,
   message text not null,
   type text not null check (type in ('info', 'success', 'warning', 'error')),
+  priority text not null default 'NORMAL' check (priority in ('LOW', 'NORMAL', 'HIGH', 'CRITICAL')),
+  category text not null default 'SYSTEM' check (category in ('PROJECT', 'APPLICATION', 'MATCHING', 'FEEDBACK', 'REMINDER', 'SYSTEM', 'AI', 'TRUST', 'PERFORMANCE')),
+  channels text[] not null default '{IN_APP}',
   is_read boolean not null default false,
+  read_at timestamptz,
+  archived_at timestamptz,
+  dismissed_at timestamptz,
+  scheduled_for timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -231,6 +238,8 @@ create index if not exists idx_applications_student_status on applications(stude
 create index if not exists idx_weekly_submissions_project_student on weekly_submissions(project_id, student_id);
 create index if not exists idx_weekly_evaluations_student on weekly_evaluations(student_id);
 create index if not exists idx_notifications_user_read on notifications(user_id, is_read);
+create index if not exists idx_notifications_user_lifecycle on notifications(user_id, is_read, archived_at, dismissed_at, created_at desc);
+create index if not exists idx_notifications_category_priority on notifications(category, priority, created_at desc);
 create index if not exists idx_audit_logs_actor_created on audit_logs(actor_id, created_at desc);
 create index if not exists idx_domain_events_type_created on domain_events(type, occurred_at desc);
 create index if not exists idx_profile_versions_profile on profile_versions(profile_type, profile_id, version desc);
@@ -281,5 +290,8 @@ export const restApiContract = [
   'GET /api/audit-logs',
   'GET /api/trust-scores/:entityType/:entityId',
   'PATCH /api/students/:studentId/profile',
-  'PATCH /api/companies/:companyId/profile'
+  'PATCH /api/companies/:companyId/profile',
+  'GET /api/notifications',
+  'PATCH /api/notifications/:notificationId/:action',
+  'PATCH /api/notifications/read-all'
 ] as const;
