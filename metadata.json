@@ -1,0 +1,6 @@
+{
+  "name": "KONEXA",
+  "description": "Global project-based talent validation platform connecting RMIT Vietnam students with Korean SMEs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
