@@ -1,4 +1,5 @@
 import express, { NextFunction, Request, Response } from 'express';
+import crypto from 'node:crypto';
 import {
   createProject,
   DomainRuleError,
@@ -92,10 +93,31 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
   app.use(express.json({ limit: config.requestBodyLimit }));
   app.use((req, res, next) => {
     metrics.requestCount += 1;
+    const requestId = req.header('x-request-id') || crypto.randomUUID();
+    res.setHeader('x-request-id', requestId);
+    res.setHeader('x-content-type-options', 'nosniff');
+    res.setHeader('x-frame-options', 'DENY');
+    res.setHeader('referrer-policy', 'no-referrer');
+    res.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=()');
     res.setHeader('Access-Control-Allow-Origin', config.corsOrigin);
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-konexa-user-id');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-konexa-user-id, x-konexa-api-key, x-request-id');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
     if (req.method === 'OPTIONS') return res.status(204).end();
+    next();
+  });
+
+  app.use((req, res, next) => {
+    if (!config.apiKey) return next();
+    if (req.path === '/api/health') return next();
+    const providedKey = req.header('x-konexa-api-key') || '';
+    const expected = Buffer.from(config.apiKey);
+    const provided = Buffer.from(providedKey);
+    const isValid = expected.length === provided.length && crypto.timingSafeEqual(expected, provided);
+    if (!isValid) {
+      metrics.deniedCount += 1;
+      metrics.errorCount += 1;
+      return res.status(401).json({ error: { code: 'API_KEY_REQUIRED', message: 'Valid KONEXA API key is required.' } });
+    }
     next();
   });
 

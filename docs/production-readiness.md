@@ -42,6 +42,8 @@ npm run api
 
 The API exposes health, metrics, state read models, project creation, applications, weekly submissions, weekly evaluations, final hiring decisions, audit logs, and trust score read models. Write operations require `x-konexa-user-id` and are rejected if the actor is not permitted by the domain rules.
 
+When `KONEXA_API_KEY` is configured, every endpoint except `GET /api/health` requires `x-konexa-api-key`. Responses include request IDs and browser security headers.
+
 ## Supabase Migration Path
 
 The app can run with the local file-backed API while Supabase is provisioned. For database deployment, apply `supabase/migrations/202607050001_initial_konexa_platform.sql`, then persist the domain outputs from `enterpriseCore.ts` to `audit_logs`, `domain_events`, and `trust_scores` in the same transaction as each aggregate write.

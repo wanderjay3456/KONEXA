@@ -30,7 +30,7 @@ Run the production API in a second terminal:
 npm run api
 ```
 
-Set `VITE_KONEXA_API_URL=http://localhost:4000` to connect the frontend to the API. When this value is empty, the app runs in browser-local mode for offline demos.
+Set `VITE_KONEXA_API_URL=http://localhost:4000` to connect the frontend to the API. When this value is empty, the app runs in browser-local mode for offline demos. In production, set `KONEXA_API_KEY` on the API and `VITE_KONEXA_API_KEY` on the frontend deployment.
 
 ## Validate
 

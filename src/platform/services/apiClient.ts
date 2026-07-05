@@ -35,6 +35,7 @@ interface ApiErrorBody {
 
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
 const apiBaseUrl = (env?.VITE_KONEXA_API_URL || '').replace(/\/$/, '');
+const apiKey = env?.VITE_KONEXA_API_KEY || '';
 
 export function isKonexaApiEnabled() {
   return apiBaseUrl.length > 0;
@@ -49,6 +50,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...options,
     headers: {
       'content-type': 'application/json',
+      ...(apiKey ? { 'x-konexa-api-key': apiKey } : {}),
       ...options.headers
     }
   });

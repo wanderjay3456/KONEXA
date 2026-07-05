@@ -30,6 +30,28 @@ async function withApi(run: (baseUrl: string) => Promise<void>) {
   }
 }
 
+async function withSecureApi(run: (baseUrl: string) => Promise<void>) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'konexa-api-secure-'));
+  const repository = new JsonFilePlatformRepository(path.join(dir, 'state.json'));
+  const app = createKonexaApp(repository, {
+    ...loadServerConfig({}),
+    port: 0,
+    dataFile: path.join(dir, 'state.json'),
+    corsOrigin: 'http://localhost:3000',
+    apiKey: 'test-production-key'
+  });
+  const server = createServer(app);
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const { port } = server.address() as AddressInfo;
+  try {
+    await run(`http://127.0.0.1:${port}`);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function json(url: string, init?: RequestInit) {
   const response = await fetch(url, {
     ...init,
@@ -109,5 +131,24 @@ test('company evaluation API updates submissions, events, and trust scores', asy
     const trustScore = await json(`${baseUrl}/api/trust-scores/STUDENT/user_student_1`);
     assert.equal(trustScore.response.status, 200);
     assert.ok(trustScore.body.score >= 80);
+  });
+});
+
+test('configured API key protects operational endpoints and preserves health checks', async () => {
+  await withSecureApi(async (baseUrl) => {
+    const health = await json(`${baseUrl}/api/health`);
+    assert.equal(health.response.status, 200);
+    assert.ok(health.response.headers.get('x-request-id'));
+    assert.equal(health.response.headers.get('x-frame-options'), 'DENY');
+
+    const blocked = await json(`${baseUrl}/api/state`);
+    assert.equal(blocked.response.status, 401);
+    assert.equal(blocked.body.error.code, 'API_KEY_REQUIRED');
+
+    const allowed = await json(`${baseUrl}/api/state`, {
+      headers: { 'x-konexa-api-key': 'test-production-key' }
+    });
+    assert.equal(allowed.response.status, 200);
+    assert.ok(allowed.body.projects.length >= 1);
   });
 });
