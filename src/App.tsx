@@ -30,6 +30,17 @@ import {
   type PlatformState
 } from './platform/domain/enterpriseCore';
 import { appendOperationalRecords, recordDeniedAction } from './platform/services/operationalStore';
+import {
+  createRemoteProject,
+  getRemotePlatformState,
+  isKonexaApiEnabled,
+  submitRemoteApplication,
+  submitRemoteFinalEvaluation,
+  submitRemoteWeeklyDeliverable,
+  submitRemoteWeeklyEvaluation,
+  updateRemoteApplicationStatus,
+  type RemotePlatformState
+} from './platform/services/apiClient';
 
 const StudentDashboard = lazy(() => import('./components/StudentDashboard'));
 const CompanyDashboard = lazy(() => import('./components/CompanyDashboard'));
@@ -52,14 +63,13 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [companyEvaluations, setCompanyEvaluations] = useState<CompanyEvaluation[]>([]);
   const [warnings, setWarnings] = useState<StudentWarning[]>([]);
+  const [isRemoteState, setIsRemoteState] = useState(false);
 
   // Authenticated User Session state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeProfileId, setActiveProfileId] = useState<string>(''); // Matches user ID
 
-  // Load state from localStorage on mount
-  useEffect(() => {
-    const state = getStoredState();
+  const applyPlatformState = (state: RemotePlatformState) => {
     setUsers(state.users);
     setStudentProfiles(state.studentProfiles);
     setCompanyProfiles(state.companyProfiles);
@@ -71,10 +81,65 @@ export default function App() {
     setNotifications(state.notifications);
     setCompanyEvaluations(state.companyEvaluations || []);
     setWarnings(state.warnings || []);
+  };
+
+  const refreshRemoteState = async () => {
+    const state = await getRemotePlatformState();
+    applyPlatformState(state);
+    setIsRemoteState(true);
+  };
+
+  const shouldUseRemoteApi = () => isKonexaApiEnabled() && isRemoteState;
+
+  const reportApiError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : 'KONEXA API request failed.';
+    if (currentUser) {
+      const newNotif: Notification = {
+        id: `notif_${Date.now()}`,
+        userId: currentUser.id,
+        title: 'KONEXA API Action Failed',
+        message,
+        type: 'error',
+        isRead: false,
+        createdAt: new Date().toISOString()
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+    }
+  };
+
+  // Load state from API when configured, otherwise localStorage.
+  useEffect(() => {
+    let isCancelled = false;
+    const load = async () => {
+      if (isKonexaApiEnabled()) {
+        try {
+          const remoteState = await getRemotePlatformState();
+          if (!isCancelled) {
+            applyPlatformState(remoteState);
+            setIsRemoteState(true);
+          }
+          return;
+        } catch {
+          if (!isCancelled) setIsRemoteState(false);
+        }
+      }
+
+      if (!isCancelled) {
+        const state = getStoredState();
+        applyPlatformState(state);
+        setIsRemoteState(false);
+      }
+    };
+
+    load();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   // Save state to localStorage when changes occur
   useEffect(() => {
+    if (isRemoteState) return;
     if (users.length === 0) return; // Prevent overwriting during initial blank render
     saveStoredState({
       users,
@@ -89,7 +154,7 @@ export default function App() {
       companyEvaluations,
       warnings
     });
-  }, [users, studentProfiles, companyProfiles, projects, applications, submissions, evaluations, finalEvaluations, notifications, companyEvaluations, warnings]);
+  }, [isRemoteState, users, studentProfiles, companyProfiles, projects, applications, submissions, evaluations, finalEvaluations, notifications, companyEvaluations, warnings]);
 
   // Reset demo state helper
   const handleResetDemoState = () => {
@@ -158,8 +223,18 @@ export default function App() {
   };
 
   // Student Actions
-  const handleApplyProject = (projectId: string, coverLetter: string, portfolioUrl?: string) => {
+  const handleApplyProject = async (projectId: string, coverLetter: string, portfolioUrl?: string) => {
     if (!currentUser) return;
+    if (shouldUseRemoteApi()) {
+      try {
+        await submitRemoteApplication(currentUser.id, projectId, coverLetter, portfolioUrl);
+        await refreshRemoteState();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
     try {
       const result = submitApplication(currentUser, platformState(), { projectId, coverLetter, portfolioUrl });
       setApplications(prev => [...prev, result.entity]);
@@ -187,6 +262,13 @@ export default function App() {
     progressReport: string,
     reflection: string
   ) => {
+    if (currentUser && shouldUseRemoteApi()) {
+      submitRemoteWeeklyDeliverable(currentUser.id, projectId, { weekNumber, deliverableFile, progressReport, reflection })
+        .then(refreshRemoteState)
+        .catch(reportApiError);
+      return;
+    }
+
     const newSubmission: WeeklySubmission = {
       id: `sub_${projectId}_w${weekNumber}_${Date.now()}`,
       projectId,
@@ -222,9 +304,19 @@ export default function App() {
   };
 
   // Company Actions
-  const handleCreateProject = (projectData: Omit<Project, 'id' | 'companyId' | 'companyName' | 'companyLogo' | 'createdAt'>) => {
+  const handleCreateProject = async (projectData: Omit<Project, 'id' | 'companyId' | 'companyName' | 'companyLogo' | 'createdAt'>) => {
     const comp = companyProfiles.find(c => c.userId === activeProfileId);
     if (!comp || !currentUser) return;
+    if (shouldUseRemoteApi()) {
+      try {
+        await createRemoteProject(currentUser.id, projectData);
+        await refreshRemoteState();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
     try {
       const result = createProject(currentUser, comp, projectData);
       setProjects(prev => [...prev, result.entity]);
@@ -234,8 +326,18 @@ export default function App() {
     }
   };
 
-  const handleUpdateApplicationStatus = (applicationId: string, status: ApplicationStatus) => {
+  const handleUpdateApplicationStatus = async (applicationId: string, status: ApplicationStatus) => {
     if (!currentUser) return;
+    if (shouldUseRemoteApi()) {
+      try {
+        await updateRemoteApplicationStatus(currentUser.id, applicationId, status);
+        await refreshRemoteState();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
     const target = applications.find(app => app.id === applicationId);
     if (!target) return;
     try {
@@ -277,6 +379,13 @@ export default function App() {
     }
   ) => {
     if (!currentUser) return;
+    if (shouldUseRemoteApi()) {
+      submitRemoteWeeklyEvaluation(currentUser.id, submissionId, evalData)
+        .then(refreshRemoteState)
+        .catch(reportApiError);
+      return;
+    }
+
     try {
       const result = submitWeeklyEvaluation(currentUser, platformState(), {
         submissionId,
@@ -304,8 +413,18 @@ export default function App() {
     }
   };
 
-  const handleSubmitFinalHiring = (projectId: string, studentId: string, decision: HiringDecision, feedback: string) => {
+  const handleSubmitFinalHiring = async (projectId: string, studentId: string, decision: HiringDecision, feedback: string) => {
     if (!currentUser) return;
+    if (shouldUseRemoteApi()) {
+      try {
+        await submitRemoteFinalEvaluation(currentUser.id, projectId, { studentId, hiringDecision: decision, feedback });
+        await refreshRemoteState();
+      } catch (error) {
+        reportApiError(error);
+      }
+      return;
+    }
+
     try {
       const result = submitFinalEvaluation(currentUser, platformState(), { projectId, studentId, hiringDecision: decision, feedback });
       setFinalEvaluations(prev => [...prev, result.entity]);
