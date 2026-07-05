@@ -10,6 +10,7 @@ KONEXA is implemented as a project-first hiring operating system. The current de
 - Browser-backed operational persistence for audit logs, domain events, trust scores, and monitoring metrics lives in `src/platform/services/operationalStore.ts`.
 - Production API routes live in `src/server/app.ts`.
 - File-backed server persistence lives in `src/server/repository.ts` and is configured by `KONEXA_DATA_FILE`.
+- Email/password registration creates pending student or company profiles and stores only salted password hashes.
 - Notifications are actor-scoped and support category, priority, read status, archive, dismiss, and audit-backed lifecycle events.
 - Domain tests live in `src/platform/tests/enterpriseCore.test.ts`.
 - API integration tests live in `src/server/tests/api.test.ts`.
@@ -43,7 +44,7 @@ For single-process deployment, build the frontend and run `npm start` with `KONE
 
 ## Operational API
 
-The API exposes health, metrics, state read models, project creation, applications, weekly submissions, weekly evaluations, final hiring decisions, profile updates, notification lifecycle actions, audit logs, and trust score read models. Actor-scoped operations require `x-konexa-user-id` and are rejected if the actor is not permitted by the domain rules.
+The API exposes health, metrics, state read models, registration, login, project creation, applications, weekly submissions, weekly evaluations, final hiring decisions, profile updates, notification lifecycle actions, audit logs, and trust score read models. Actor-scoped operations require `x-konexa-user-id` and are rejected if the actor is not permitted by the domain rules.
 
 When `KONEXA_API_KEY` is configured, every endpoint except `GET /api/health` requires `x-konexa-api-key`. Responses include request IDs and browser security headers.
 

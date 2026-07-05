@@ -107,6 +107,60 @@ test('health, state, and metrics endpoints expose operational status', async () 
   });
 });
 
+test('auth API registers and logs in student and company accounts', async () => {
+  await withApi(async (baseUrl) => {
+    const registeredStudent = await json(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      body: JSON.stringify({
+        role: 'STUDENT',
+        email: 'new.student@rmit.edu.vn',
+        password: 'Evidence2026',
+        fullName: 'Le An Minh',
+        major: 'Computer Science'
+      })
+    });
+    assert.equal(registeredStudent.response.status, 201);
+    assert.equal(registeredStudent.body.user.status, 'PENDING');
+    assert.equal(registeredStudent.body.studentProfile.fullName, 'Le An Minh');
+
+    const studentLogin = await json(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      body: JSON.stringify({
+        role: 'STUDENT',
+        email: 'new.student@rmit.edu.vn',
+        password: 'Evidence2026'
+      })
+    });
+    assert.equal(studentLogin.response.status, 200);
+    assert.equal(studentLogin.body.user.email, 'new.student@rmit.edu.vn');
+
+    const registeredCompany = await json(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      body: JSON.stringify({
+        role: 'COMPANY',
+        email: 'talent@example.co.kr',
+        password: 'Company2026',
+        companyName: 'Example Korea AI',
+        businessRegistrationFile: 'business-registration.pdf'
+      })
+    });
+    assert.equal(registeredCompany.response.status, 201);
+    assert.equal(registeredCompany.body.companyProfile.verificationStatus, 'PENDING');
+
+    const duplicate = await json(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      body: JSON.stringify({
+        role: 'STUDENT',
+        email: 'new.student@rmit.edu.vn',
+        password: 'Evidence2026',
+        fullName: 'Duplicate Student',
+        major: 'Business'
+      })
+    });
+    assert.equal(duplicate.response.status, 409);
+  });
+});
+
 test('project application API uses domain rules and records trust evidence', async () => {
   await withApi(async (baseUrl) => {
     const submitted = await json(`${baseUrl}/api/projects/proj_2/applications`, {

@@ -17,6 +17,7 @@ The platform follows the operating philosophy:
 - Permission checks, validation, audit logging, domain events, trust score recalculation, operational metrics, and tests
 - Versioned student and company profile management with AI context invalidation events
 - Lifecycle-managed notification system with read, archive, dismiss, category, priority, and ownership enforcement
+- Email/password registration and login for student and company accounts with password hashing and pending verification profiles
 - Lazy-loaded admin workspaces for better production bundles
 
 ## Run Locally
@@ -69,6 +70,8 @@ See `docs/production-readiness.md` for domain rules, schema contracts, monitorin
 - `GET /api/health`
 - `GET /api/metrics`
 - `GET /api/state`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
 - `GET /api/projects`
 - `POST /api/projects`
 - `PATCH /api/projects/:projectId/status`

@@ -78,6 +78,23 @@ export function getRemotePlatformState() {
   return request<RemotePlatformState>('/api/state');
 }
 
+export function registerRemoteAccount(input:
+  | { role: 'STUDENT'; email: string; password: string; fullName: string; university?: string; major: string }
+  | { role: 'COMPANY'; email: string; password: string; companyName: string; businessRegistrationFile: string }
+) {
+  return request<{ user: User; studentProfile?: StudentProfile; companyProfile?: CompanyProfile }>('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
+export function loginRemoteAccount(input: { role: 'STUDENT' | 'COMPANY' | 'ADMIN'; email: string; password: string }) {
+  return request<{ user: User; studentProfile?: StudentProfile; companyProfile?: CompanyProfile }>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
 export function createRemoteProject(actorId: string, project: Omit<Project, 'id' | 'companyId' | 'companyName' | 'companyLogo' | 'createdAt'>) {
   return request<Project>('/api/projects', {
     method: 'POST',

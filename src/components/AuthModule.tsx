@@ -24,11 +24,16 @@ import { UserRole } from '../types';
 
 interface AuthModuleProps {
   onSuccess: (role: UserRole, email: string, isVerified: boolean, customId: string) => void;
+  onLogin: (input: { role: 'STUDENT' | 'COMPANY' | 'ADMIN'; email: string; password: string }) => Promise<void>;
+  onRegister: (input:
+    | { role: 'STUDENT'; email: string; password: string; fullName: string; university?: string; major: string }
+    | { role: 'COMPANY'; email: string; password: string; companyName: string; businessRegistrationFile: string }
+  ) => Promise<void>;
   onBackToLanding: () => void;
   initialRole?: 'STUDENT' | 'COMPANY' | 'ADMIN';
 }
 
-export default function AuthModule({ onSuccess, onBackToLanding, initialRole }: AuthModuleProps) {
+export default function AuthModule({ onSuccess, onLogin, onRegister, onBackToLanding, initialRole }: AuthModuleProps) {
   const [role, setRole] = useState<'STUDENT' | 'COMPANY' | 'ADMIN'>(initialRole || 'STUDENT');
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -65,7 +70,7 @@ export default function AuthModule({ onSuccess, onBackToLanding, initialRole }: 
     }, 1200);
   };
 
-  const handleEmailAuth = (e: React.FormEvent) => {
+  const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -79,62 +84,38 @@ export default function AuthModule({ onSuccess, onBackToLanding, initialRole }: 
       setErrorMsg('Invalid email format. Must contain @.');
       return;
     }
-    if (password.length < 6) {
-      setErrorMsg('Password is too weak. Must be at least 6 characters.');
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      setErrorMsg('Password must be at least 8 characters and include letters and numbers.');
+      return;
+    }
+
+    if (!isLogin && role === 'STUDENT' && (!fullName.trim() || !major.trim())) {
+      setErrorMsg('Please enter your full name and major.');
+      return;
+    }
+
+    if (!isLogin && role === 'COMPANY' && (!companyName.trim() || !selectedFile)) {
+      setErrorMsg('Company name and business registration certificate are required.');
       return;
     }
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
       if (isLogin) {
-        // Mock Login checks
-        if (role === 'ADMIN' && email !== 'admin@konexa.co') {
-          setErrorMsg('Unauthorized admin credentials. Try admin@konexa.co');
-          return;
-        }
-
-        // Simulating login
-        let mockId = 'user_student_1';
-        let verified = true;
-        
-        if (role === 'STUDENT') {
-          if (email.toLowerCase().includes('huy')) {
-            mockId = 'user_student_2';
-            verified = false; // Huy is pending/unverified
-          }
-        } else if (role === 'COMPANY') {
-          mockId = 'user_company_1';
-          if (email.toLowerCase().includes('sensor') || email.toLowerCase().includes('gb')) {
-            mockId = 'user_company_2';
-            verified = false; // Sensor is pending
-          }
-        } else {
-          mockId = 'user_admin_1';
-        }
-
-        onSuccess(
-          role === 'STUDENT' ? UserRole.STUDENT : role === 'COMPANY' ? UserRole.COMPANY : UserRole.ADMIN,
-          email,
-          verified,
-          mockId
-        );
+        await onLogin({ role, email, password });
+      } else if (role === 'STUDENT') {
+        await onRegister({ role: 'STUDENT', email, password, fullName, university: 'RMIT University Vietnam', major });
+      } else if (role === 'COMPANY') {
+        await onRegister({ role: 'COMPANY', email, password, companyName, businessRegistrationFile: selectedFile?.name || '' });
       } else {
-        // Mock Registration
-        if (role === 'STUDENT') {
-          setSuccessMsg('Account created! A secure confirmation link has been sent to your RMIT email.');
-          setShowVerificationForm(true);
-        } else {
-          if (!selectedFile) {
-            setErrorMsg('Business Registration Certificate (.pdf) is mandatory to verify Korean SMEs.');
-            return;
-          }
-          setSuccessMsg('Registration submitted! Our Admin Team will review your company business files within 12 hours.');
-          setShowVerificationForm(true);
-        }
+        setErrorMsg('Admin accounts are managed internally. Please sign in with an existing admin account.');
       }
-    }, 1500);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Authentication failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -195,7 +176,7 @@ export default function AuthModule({ onSuccess, onBackToLanding, initialRole }: 
         {/* Account Quick Switcher (Highly requested for prototype testing) */}
         <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 mb-6 text-center">
           <div className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider mb-2 font-bold">
-            💡 Quick Demo Accounts (No password required)
+            Demo accounts
           </div>
           <div className="grid grid-cols-3 gap-1.5">
             <button 
@@ -332,7 +313,7 @@ export default function AuthModule({ onSuccess, onBackToLanding, initialRole }: 
                   onClick={() => setRole('COMPANY')}
                   className={`py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${role === 'COMPANY' ? 'bg-sky-400 text-black shadow-md' : 'text-neutral-400 hover:text-white'}`}
                 >
-                  <Building2 className="w-3.5 h-3.5" /> SME Repo
+                  <Building2 className="w-3.5 h-3.5" /> Company
                 </button>
                 <button
                   type="button"
@@ -558,7 +539,7 @@ export default function AuthModule({ onSuccess, onBackToLanding, initialRole }: 
             onClick={onBackToLanding}
             className="text-xs text-neutral-500 hover:text-neutral-300 flex items-center justify-center gap-1 mx-auto transition-colors"
           >
-            ← Back to Landing Page
+            Back to Landing Page
           </button>
         </div>
       </div>

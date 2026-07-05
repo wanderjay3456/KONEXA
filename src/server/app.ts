@@ -6,6 +6,8 @@ import {
   DomainRuleError,
   approveUserVerification,
   issueStudentWarning,
+  registerCompanyAccount,
+  registerStudentAccount,
   submitApplication,
   submitFinalEvaluation,
   submitWeeklyEvaluation,
@@ -108,6 +110,24 @@ function notificationEvent(actor: User, type: DomainEvent['type'], notificationI
 
 function canAccessNotification(actor: User, notificationItem: Notification) {
   return notificationItem.userId === actor.id || actor.role === 'ADMIN' || actor.role === 'SUPER_ADMIN';
+}
+
+function hashPassword(password: string, salt = crypto.randomBytes(16).toString('hex')) {
+  const passwordHash = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
+  return { passwordHash, passwordSalt: salt };
+}
+
+function verifyPassword(password: string, passwordHash: string, passwordSalt: string) {
+  const computed = hashPassword(password, passwordSalt).passwordHash;
+  return crypto.timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(passwordHash, 'hex'));
+}
+
+function readPassword(body: Record<string, unknown>) {
+  const password = readString(body, 'password', 8);
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    throw new RequestValidationError('Invalid request body.', { password: 'Must include at least one letter and one number.' });
+  }
+  return password;
 }
 
 function requireActor(req: RequestWithActor, repository: PlatformRepository) {
@@ -260,6 +280,89 @@ export function createKonexaApp(repository: PlatformRepository, config: ServerCo
       trustScoreCount: state.trustScores.length,
       averageTrustScore
     });
+  });
+
+  app.post('/api/auth/register', (req, res, next) => {
+    try {
+      const body = asObject(req.body);
+      const role = readString(body, 'role');
+      const email = readString(body, 'email', 5).toLowerCase();
+      const password = readPassword(body);
+      const state = repository.read();
+      if (state.users.some((item) => item.email.toLowerCase() === email)) {
+        return res.status(409).json({ error: { code: 'EMAIL_ALREADY_REGISTERED', message: 'This email is already registered.' } });
+      }
+
+      const result = role === 'STUDENT'
+        ? registerStudentAccount({
+            email,
+            fullName: readString(body, 'fullName', 2),
+            university: readOptionalString(body, 'university'),
+            major: readString(body, 'major', 2)
+          })
+        : role === 'COMPANY'
+          ? registerCompanyAccount({
+              email,
+              companyName: readString(body, 'companyName', 2),
+              businessRegistrationFile: readString(body, 'businessRegistrationFile', 2)
+            })
+          : undefined;
+
+      if (!result) {
+        throw new RequestValidationError('Invalid request body.', { role: 'Must be STUDENT or COMPANY.' });
+      }
+
+      const { passwordHash, passwordSalt } = hashPassword(password);
+      const createdAt = new Date().toISOString();
+      repository.update((current) => appendOperationalState({
+        ...current,
+        users: [...current.users, result.entity.user],
+        studentProfiles: 'studentProfile' in result.entity ? [...current.studentProfiles, result.entity.studentProfile] : current.studentProfiles,
+        companyProfiles: 'companyProfile' in result.entity ? [...current.companyProfiles, result.entity.companyProfile] : current.companyProfiles,
+        authCredentials: [...current.authCredentials, {
+          userId: result.entity.user.id,
+          passwordHash,
+          passwordSalt,
+          createdAt,
+          updatedAt: createdAt
+        }],
+        notifications: [
+          notification(result.entity.user.id, 'Account Created', 'Your KONEXA profile is ready. Complete your profile while verification is reviewed.', 'success', { category: 'SYSTEM', priority: 'HIGH', channels: ['IN_APP', 'EMAIL'] }),
+          ...current.notifications
+        ]
+      }, {
+        auditLogs: result.auditLogs,
+        domainEvents: result.events,
+        trustScores: result.trustScores
+      }));
+      metrics.writeCount += 1;
+      res.status(201).json(result.entity);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/auth/login', (req, res, next) => {
+    try {
+      const body = asObject(req.body);
+      const role = readString(body, 'role');
+      const email = readString(body, 'email', 5).toLowerCase();
+      const password = readPassword(body);
+      const state = repository.read();
+      const user = state.users.find((item) => item.email.toLowerCase() === email && item.role === role);
+      const credential = user ? state.authCredentials.find((item) => item.userId === user.id) : undefined;
+      if (!user || !credential || !verifyPassword(password, credential.passwordHash, credential.passwordSalt)) {
+        return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Check your email address or password.' } });
+      }
+
+      res.json({
+        user,
+        studentProfile: state.studentProfiles.find((item) => item.userId === user.id),
+        companyProfile: state.companyProfiles.find((item) => item.userId === user.id)
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get('/api/state', (_req, res) => sendState(res, repository));

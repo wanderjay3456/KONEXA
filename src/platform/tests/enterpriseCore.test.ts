@@ -5,6 +5,8 @@ import {
   createProject,
   DomainRuleError,
   issueStudentWarning,
+  registerCompanyAccount,
+  registerStudentAccount,
   submitApplication,
   submitFinalEvaluation,
   submitWeeklyEvaluation,
@@ -39,6 +41,25 @@ test('verified students can submit one application to an open project with audit
   assert.equal(result.events[0].type, 'application.submitted');
   assert.equal(result.auditLogs[0].decision, 'ALLOW');
   assert.equal(result.trustScores[0].entityType, 'STUDENT');
+});
+
+test('student and company registration create pending profiles with audit records', () => {
+  const student = registerStudentAccount({
+    email: 'new.student@rmit.edu.vn',
+    fullName: 'Le An Minh',
+    major: 'Computer Science'
+  });
+  assert.equal(student.entity.user.status, 'PENDING');
+  assert.equal(student.entity.studentProfile.contactEmail, 'new.student@rmit.edu.vn');
+  assert.equal(student.events[0].type, 'user.registered');
+
+  const company = registerCompanyAccount({
+    email: 'people@example.co.kr',
+    companyName: 'Example Korea AI',
+    businessRegistrationFile: 'example-registration.pdf'
+  });
+  assert.equal(company.entity.companyProfile.verificationStatus, 'PENDING');
+  assert.equal(company.auditLogs[0].decision, 'ALLOW');
 });
 
 test('duplicate applications are denied to protect project evaluation integrity', () => {

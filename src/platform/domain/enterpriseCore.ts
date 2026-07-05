@@ -30,6 +30,7 @@ export type DomainEventType =
   | 'verification.approved'
   | 'warning.issued'
   | 'trust.score_recalculated'
+  | 'user.registered'
   | 'student.updated'
   | 'company.updated'
   | 'ai.context_invalidated'
@@ -100,6 +101,23 @@ export class DomainRuleError extends Error {
 
 const nowIso = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const defaultNotificationPreferences = {
+  inApp: true,
+  email: true,
+  projectUpdates: true,
+  applicationUpdates: true,
+  aiRecommendations: true,
+  trustUpdates: true,
+  weeklyReminders: true
+};
+
+const defaultPrivacySettings = {
+  showPortfolio: true,
+  showGithub: true,
+  showLinkedIn: true,
+  allowCompanyDiscovery: true
+};
 
 function audit(
   actor: Actor,
@@ -180,6 +198,12 @@ function assertOptionalEmail(value: string | undefined, field: string, actor: Ac
   }
 }
 
+function assertRegistrationEmail(value: string) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+    throw new DomainRuleError('A valid email address is required.', 'VALIDATION_FAILED', []);
+  }
+}
+
 function cleanStringArray(value: string[] | undefined, field: string, actor: Actor) {
   if (!value) return undefined;
   const cleaned = value.map((item) => item.trim()).filter(Boolean);
@@ -232,6 +256,115 @@ export function calculateStudentTrustScore(
       `${studentWarnings.length} administrative warnings`
     ],
     recalculatedAt: nowIso()
+  };
+}
+
+export function registerStudentAccount(input: {
+  email: string;
+  fullName: string;
+  university?: string;
+  major: string;
+}): MutationResult<{ user: User; studentProfile: StudentProfile }> {
+  assertRegistrationEmail(input.email);
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const actor: Actor = { id: id('user_student'), role: UserRole.STUDENT, status: 'PENDING', isVerified: false };
+  assertText(input.fullName, 'fullName', actor, 'student_registration');
+  assertText(input.major, 'major', actor, 'student_registration');
+
+  const user: User = {
+    id: actor.id,
+    email: normalizedEmail,
+    role: UserRole.STUDENT,
+    isVerified: false,
+    status: 'PENDING',
+    createdAt: nowIso()
+  };
+
+  const studentProfile: StudentProfile = {
+    userId: user.id,
+    fullName: input.fullName.trim(),
+    avatarUrl: `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(input.fullName.trim())}`,
+    university: input.university?.trim() || 'RMIT University Vietnam',
+    major: input.major.trim(),
+    graduationDate: 'To be updated',
+    englishProficiency: 'To be verified',
+    languages: ['English'],
+    skills: [],
+    certificates: [],
+    portfolioUrl: '',
+    githubUrl: '',
+    linkedinUrl: '',
+    preferredCountry: 'South Korea',
+    preferredIndustry: 'To be updated',
+    preferredRole: 'To be updated',
+    availability: 'To be updated',
+    biography: '',
+    careerGoals: '',
+    contactEmail: normalizedEmail,
+    notificationPreferences: defaultNotificationPreferences,
+    privacySettings: defaultPrivacySettings,
+    profileVersion: 1,
+    updatedAt: nowIso()
+  };
+
+  return {
+    entity: { user, studentProfile },
+    events: [event('user.registered', actor, user.id, { role: user.role, email: user.email })],
+    auditLogs: [audit(actor, 'user.registered', 'user', user.id, 'ALLOW', 'Student account registered with pending verification profile.')],
+    trustScores: [calculateStudentTrustScore(user.id, [], [], [])]
+  };
+}
+
+export function registerCompanyAccount(input: {
+  email: string;
+  companyName: string;
+  businessRegistrationFile: string;
+}): MutationResult<{ user: User; companyProfile: CompanyProfile }> {
+  assertRegistrationEmail(input.email);
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const actor: Actor = { id: id('user_company'), role: UserRole.COMPANY, status: 'PENDING', isVerified: false };
+  assertText(input.companyName, 'companyName', actor, 'company_registration');
+  assertText(input.businessRegistrationFile, 'businessRegistrationFile', actor, 'company_registration');
+
+  const user: User = {
+    id: actor.id,
+    email: normalizedEmail,
+    role: UserRole.COMPANY,
+    isVerified: false,
+    status: 'PENDING',
+    createdAt: nowIso()
+  };
+
+  const companyProfile: CompanyProfile = {
+    userId: user.id,
+    companyName: input.companyName.trim(),
+    logoUrl: `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(input.companyName.trim())}`,
+    industry: 'To be updated',
+    description: '',
+    website: '',
+    location: 'South Korea',
+    companySize: 'To be updated',
+    englishAvailability: 'To be verified',
+    hiringPreferences: [],
+    preferredMajors: [],
+    preferredSkills: [],
+    languages: ['English'],
+    recruitmentStatus: 'PAUSED',
+    contactEmail: normalizedEmail,
+    notificationPreferences: defaultNotificationPreferences,
+    teamMembers: [],
+    employerBranding: '',
+    verificationStatus: 'PENDING',
+    businessRegistrationFile: input.businessRegistrationFile.trim(),
+    profileVersion: 1,
+    updatedAt: nowIso()
+  };
+
+  return {
+    entity: { user, companyProfile },
+    events: [event('user.registered', actor, user.id, { role: user.role, email: user.email })],
+    auditLogs: [audit(actor, 'user.registered', 'user', user.id, 'ALLOW', 'Company account registered with pending business verification.')],
+    trustScores: []
   };
 }
 

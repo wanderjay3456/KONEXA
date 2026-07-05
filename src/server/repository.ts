@@ -19,10 +19,19 @@ import { FinalProjectEvaluation, Notification, ProfileVersion } from '../types';
 export interface PersistedPlatformState extends PlatformState {
   finalEvaluations: FinalProjectEvaluation[];
   notifications: Notification[];
+  authCredentials: AuthCredential[];
   auditLogs: AuditLog[];
   domainEvents: DomainEvent[];
   trustScores: TrustScore[];
   profileVersions: ProfileVersion[];
+}
+
+export interface AuthCredential {
+  userId: string;
+  passwordHash: string;
+  passwordSalt: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PlatformRepository {
@@ -42,6 +51,7 @@ function initialState(): PersistedPlatformState {
     evaluations: initialEvaluations,
     finalEvaluations: initialFinalEvaluations,
     notifications: initialNotifications,
+    authCredentials: [],
     companyEvaluations: initialCompanyEvaluations,
     warnings: initialStudentWarnings,
     auditLogs: [],
@@ -57,6 +67,7 @@ function mergeWithInitial(value: Partial<PersistedPlatformState>): PersistedPlat
     ...base,
     ...value,
     auditLogs: value.auditLogs ?? [],
+    authCredentials: value.authCredentials ?? [],
     domainEvents: value.domainEvents ?? [],
     trustScores: value.trustScores ?? [],
     profileVersions: value.profileVersions ?? []

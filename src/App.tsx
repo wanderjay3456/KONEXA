@@ -25,6 +25,8 @@ import {
   DomainRuleError,
   approveUserVerification,
   issueStudentWarning,
+  registerCompanyAccount,
+  registerStudentAccount,
   submitApplication,
   submitFinalEvaluation,
   submitWeeklyEvaluation,
@@ -40,7 +42,9 @@ import {
   getRemoteNotifications,
   issueRemoteStudentWarning,
   isKonexaApiEnabled,
+  loginRemoteAccount,
   markAllRemoteNotificationsRead,
+  registerRemoteAccount,
   submitRemoteApplication,
   submitRemoteFinalEvaluation,
   submitRemoteWeeklyDeliverable,
@@ -231,6 +235,70 @@ export default function App() {
     setCurrentUser(user);
     setActiveProfileId(profileId);
     setView('PLATFORM');
+  };
+
+  const openUserWorkspace = (user: User) => {
+    setCurrentUser(user);
+    setActiveProfileId(user.id);
+    setView('PLATFORM');
+  };
+
+  const handleEmailLogin = async (input: { role: 'STUDENT' | 'COMPANY' | 'ADMIN'; email: string; password: string }) => {
+    if (shouldUseRemoteApi()) {
+      const result = await loginRemoteAccount(input);
+      await refreshRemoteState();
+      openUserWorkspace(result.user);
+      return;
+    }
+
+    const user = users.find(item => item.email.toLowerCase() === input.email.toLowerCase() && item.role === input.role);
+    if (!user) {
+      throw new Error('No KONEXA account was found for that email and role.');
+    }
+    openUserWorkspace(user);
+  };
+
+  const handleEmailRegister = async (input:
+    | { role: 'STUDENT'; email: string; password: string; fullName: string; university?: string; major: string }
+    | { role: 'COMPANY'; email: string; password: string; companyName: string; businessRegistrationFile: string }
+  ) => {
+    if (shouldUseRemoteApi()) {
+      const result = await registerRemoteAccount(input);
+      await refreshRemoteState();
+      openUserWorkspace(result.user);
+      return;
+    }
+
+    if (users.some(item => item.email.toLowerCase() === input.email.toLowerCase())) {
+      throw new Error('This email is already registered.');
+    }
+
+    const result = input.role === 'STUDENT'
+      ? registerStudentAccount(input)
+      : registerCompanyAccount(input);
+    setUsers(prev => [...prev, result.entity.user]);
+    if (input.role === 'STUDENT') {
+      const studentResult = result as ReturnType<typeof registerStudentAccount>;
+      setStudentProfiles(prev => [...prev, studentResult.entity.studentProfile]);
+    }
+    if (input.role === 'COMPANY') {
+      const companyResult = result as ReturnType<typeof registerCompanyAccount>;
+      setCompanyProfiles(prev => [...prev, companyResult.entity.companyProfile]);
+    }
+    appendOperationalRecords({ auditLogs: result.auditLogs, domainEvents: result.events, trustScores: result.trustScores });
+    setNotifications(prev => [{
+      id: `notif_${Date.now()}`,
+      userId: result.entity.user.id,
+      title: 'Account Created',
+      message: 'Your KONEXA profile is ready. Complete your profile while verification is reviewed.',
+      type: 'success',
+      priority: 'HIGH',
+      category: 'SYSTEM',
+      channels: ['IN_APP', 'EMAIL'],
+      isRead: false,
+      createdAt: new Date().toISOString()
+    }, ...prev]);
+    openUserWorkspace(result.entity.user);
   };
 
   // Logout Handler
@@ -826,6 +894,8 @@ export default function App() {
         <AuthModule 
           initialRole={authInitialRole}
           onSuccess={handleAuthSuccess}
+          onLogin={handleEmailLogin}
+          onRegister={handleEmailRegister}
           onBackToLanding={() => setView('LANDING')}
         />
       )}

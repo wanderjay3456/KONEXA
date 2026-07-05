@@ -16,6 +16,14 @@ create table if not exists users (
   created_at timestamptz not null default now()
 );
 
+create table if not exists auth_credentials (
+  user_id text primary key references users(id) on delete cascade,
+  password_hash text not null,
+  password_salt text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists student_profiles (
   user_id text primary key references users(id) on delete cascade,
   full_name text not null,
@@ -243,8 +251,10 @@ create index if not exists idx_notifications_category_priority on notifications(
 create index if not exists idx_audit_logs_actor_created on audit_logs(actor_id, created_at desc);
 create index if not exists idx_domain_events_type_created on domain_events(type, occurred_at desc);
 create index if not exists idx_profile_versions_profile on profile_versions(profile_type, profile_id, version desc);
+create index if not exists idx_auth_credentials_updated on auth_credentials(updated_at desc);
 
 alter table users enable row level security;
+alter table auth_credentials enable row level security;
 alter table student_profiles enable row level security;
 alter table company_profiles enable row level security;
 alter table projects enable row level security;
@@ -261,6 +271,7 @@ alter table trust_scores enable row level security;
 alter table profile_versions enable row level security;
 
 create policy "users can read their own account" on users for select using (auth.uid()::text = id);
+create policy "users cannot read password hashes directly" on auth_credentials for select using (false);
 create policy "students can read their own profile" on student_profiles for select using (auth.uid()::text = user_id);
 create policy "companies can read their own profile" on company_profiles for select using (auth.uid()::text = user_id);
 create policy "verified users can read open projects" on projects for select using (status in ('OPEN', 'RUNNING', 'COMPLETED'));
@@ -278,6 +289,8 @@ create policy "users can read own profile versions" on profile_versions for sele
 `;
 
 export const restApiContract = [
+  'POST /api/auth/register',
+  'POST /api/auth/login',
   'POST /api/projects',
   'GET /api/projects',
   'PATCH /api/projects/:projectId/status',

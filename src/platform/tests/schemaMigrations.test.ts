@@ -8,6 +8,7 @@ const migrationPath = path.resolve('supabase/migrations/202607050001_initial_kon
 
 const requiredTables = [
   'users',
+  'auth_credentials',
   'student_profiles',
   'company_profiles',
   'projects',
@@ -28,7 +29,8 @@ test('initial migration contains every production table and RLS activation', () 
   const sql = [
     fs.readFileSync(migrationPath, 'utf8'),
     fs.readFileSync(path.resolve('supabase/migrations/202607050002_profile_management_sync.sql'), 'utf8'),
-    fs.readFileSync(path.resolve('supabase/migrations/202607050003_notification_management.sql'), 'utf8')
+    fs.readFileSync(path.resolve('supabase/migrations/202607050003_notification_management.sql'), 'utf8'),
+    fs.readFileSync(path.resolve('supabase/migrations/202607050004_auth_registration.sql'), 'utf8')
   ].join('\n');
 
   for (const table of requiredTables) {
@@ -47,6 +49,8 @@ test('typescript schema contract stays synchronized with migration table coverag
 });
 
 test('REST contract includes core project-first hiring endpoints', () => {
+  assert.ok(restApiContract.includes('POST /api/auth/register'));
+  assert.ok(restApiContract.includes('POST /api/auth/login'));
   assert.ok(restApiContract.includes('POST /api/projects'));
   assert.ok(restApiContract.includes('PATCH /api/projects/:projectId/status'));
   assert.ok(restApiContract.includes('POST /api/projects/:projectId/applications'));
